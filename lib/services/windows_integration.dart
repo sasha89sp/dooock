@@ -710,10 +710,17 @@ class WindowsIntegration {
       lastIconDebugTrace = dbg.toString().trimRight();
       return null;
     }
+    final lowerFile = filePath.toLowerCase();
+    if (lowerFile.contains('icons_cache') && lowerFile.endsWith('.bmp')) {
+      dbg.writeln('stop: refusing to extract icon from icons_cache bmp');
+      lastIconDebugTrace = dbg.toString().trimRight();
+      return File(filePath).existsSync() ? filePath : null;
+    }
+    final safeIdx = (iconIndex < -65535 || iconIndex > 1024) ? 0 : iconIndex;
     final sw = Stopwatch()..start();
     final cacheDir = PortableStorage.iconsCacheDir;
     final hash = filePath.hashCode.abs().toString();
-    final outPath = '${cacheDir.path}${Platform.pathSeparator}icon_native_${hash}_i${iconIndex.abs()}.bmp';
+    final outPath = '${cacheDir.path}${Platform.pathSeparator}icon_native_${hash}_i${safeIdx.abs()}.bmp';
     if (File(outPath).existsSync()) {
       dbg.writeln('hit disk cache: $outPath');
       lastIconDebugTrace = dbg.toString().trimRight();
@@ -733,10 +740,10 @@ class WindowsIntegration {
         final largePtr = calloc<IntPtr>();
         final smallPtr = calloc<IntPtr>();
         try {
-          var extCount = _extractIconExW!(pathPtr, iconIndex, largePtr, smallPtr, 1);
+          var extCount = _extractIconExW!(pathPtr, safeIdx, largePtr, smallPtr, 1);
           hIcon = largePtr.value != 0 ? largePtr.value : smallPtr.value;
-          dbg.writeln('ExtractIconExW(idx=$iconIndex): count=$extCount large=${largePtr.value} small=${smallPtr.value} chosen=$hIcon');
-          if (hIcon == 0 && iconIndex != 0) {
+          dbg.writeln('ExtractIconExW(idx=$safeIdx, raw=$iconIndex): count=$extCount large=${largePtr.value} small=${smallPtr.value} chosen=$hIcon');
+          if (hIcon == 0 && safeIdx != 0) {
             largePtr.value = 0;
             smallPtr.value = 0;
             extCount = _extractIconExW!(pathPtr, 0, largePtr, smallPtr, 1);

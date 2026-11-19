@@ -1,6 +1,6 @@
-version: 2.6.3
+version: 2.6.6
 status: active
 current_state:
-  - Окно настроек теперь перетаскивается за верхнюю панель заголовка (windowManager.startDragging()) и не фиксируется поверх всех других окон при открытии.
+  - Упрощена и приведена к логике классического RocketDock работа с иконками (_warmUpIconCache и _reextractAllIconsManually), убраны лишние ветки повторного перебора и сохранён кэш на диске и в памяти.
 next_step:
-  - Распаковать архив в локальный репозиторий и выполнить проверку на Windows (dart analyze / flutter test / flutter build windows --release).
+  - Скачать архив roket_dok_v2_6_6_rel.zip, распаковать в локальный репозиторий на Windows и выполнить dart analyze, flutter test и flutter build windows --release.

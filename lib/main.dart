@@ -91,7 +91,7 @@ class _DockScreenState extends State<DockScreen>
   DateTime _lastLaunchTime = DateTime.fromMillisecondsSinceEpoch(0);
   String _lastLaunchedId = '';
 
-  static const int _maxCachedIcons = 48;
+  static const int _maxCachedIcons = 512;
 
   bool get _isEffectiveEcoMode =>
       _settings.ecoDesktopMode ||
@@ -295,17 +295,21 @@ class _DockScreenState extends State<DockScreen>
         continue;
       }
       final prevPath = _resolveEnvPath(item.customIconPath);
-      if (prevPath.isNotEmpty) {
-        final prevFile = File(prevPath);
-        if (prevPath.toLowerCase().contains('icons_cache') && await prevFile.exists()) {
+      if (prevPath.toLowerCase().contains('icons_cache') && prevPath.toLowerCase().endsWith('.bmp')) {
+        final f = File(prevPath);
+        if (await f.exists()) {
           try {
-            await prevFile.delete();
+            await f.delete();
           } catch (_) {}
         }
         item.customIconPath = '';
       }
 
-      final srcPath = prevPath.isNotEmpty ? prevPath : _resolveEnvPath(item.targetPath);
+      final srcPath = (item.customIconPath.isNotEmpty &&
+              !item.customIconPath.toLowerCase().contains('icons_cache'))
+          ? _resolveEnvPath(item.customIconPath)
+          : _resolveEnvPath(item.targetPath);
+
       if (Platform.isWindows && srcPath.isNotEmpty) {
         _attemptedNativeIconIds.add(item.id);
         final sLower = srcPath.toLowerCase();
@@ -313,10 +317,10 @@ class _DockScreenState extends State<DockScreen>
             !sLower.startsWith('https://') &&
             !sLower.startsWith('shell:') &&
             !sLower.startsWith('ms-')) {
-          final effectiveSrc = _resolveEnvPath(
+          final resolved = _resolveEnvPath(
             await WindowsIntegration.resolveShortcutTargetIfNeeded(srcPath),
           );
-          final outBmp = WindowsIntegration.extractNativeIconBmp(effectiveSrc, iconIndex: item.iconIndex) ??
+          final outBmp = WindowsIntegration.extractNativeIconBmp(resolved, iconIndex: item.iconIndex) ??
               WindowsIntegration.extractNativeIconBmp(srcPath, iconIndex: item.iconIndex);
           if (outBmp != null && await File(outBmp).exists()) {
             item.customIconPath = outBmp;
@@ -341,6 +345,7 @@ class _DockScreenState extends State<DockScreen>
   Future<void> _warmUpIconCache() async {
     int warmed = 0;
     bool updatedAnyPath = false;
+
     for (final item in items) {
       if (item.isSeparator || item.isHardwareWidget || item.isWidgetPlugin || item.isPowerAction) {
         continue;
@@ -360,19 +365,19 @@ class _DockScreenState extends State<DockScreen>
           _settings.autoExtractExeIcons &&
           !_attemptedNativeIconIds.contains(item.id)) {
         _attemptedNativeIconIds.add(item.id);
-        final sourceCandidate = path.isNotEmpty ? path : target;
-        final sLower = sourceCandidate.toLowerCase();
-        if (sourceCandidate.isNotEmpty &&
+        final isCacheBmp = lowerPath.contains('icons_cache') && lowerPath.endsWith('.bmp');
+        final src = (path.isNotEmpty && !isCacheBmp) ? path : target;
+        final sLower = src.toLowerCase();
+        if (src.isNotEmpty &&
             !sLower.startsWith('http://') &&
             !sLower.startsWith('https://') &&
             !sLower.startsWith('shell:') &&
             !sLower.startsWith('ms-')) {
-          final effectiveSource = _resolveEnvPath(
-            await WindowsIntegration.resolveShortcutTargetIfNeeded(sourceCandidate),
+          final resolved = _resolveEnvPath(
+            await WindowsIntegration.resolveShortcutTargetIfNeeded(src),
           );
-          final extracted = WindowsIntegration.extractNativeIconBmp(effectiveSource, iconIndex: item.iconIndex) ??
-              WindowsIntegration.extractNativeIconBmp(sourceCandidate, iconIndex: item.iconIndex) ??
-              (target.isNotEmpty ? WindowsIntegration.extractNativeIconBmp(target, iconIndex: item.iconIndex) : null);
+          final extracted = WindowsIntegration.extractNativeIconBmp(resolved, iconIndex: item.iconIndex) ??
+              WindowsIntegration.extractNativeIconBmp(src, iconIndex: item.iconIndex);
           if (extracted != null) {
             item.customIconPath = extracted;
             path = extracted;
@@ -380,6 +385,7 @@ class _DockScreenState extends State<DockScreen>
           }
         }
       }
+
       if (path.isNotEmpty && warmed < _maxCachedIcons && !_imageCache.containsKey(path)) {
         final file = File(path);
         if (await file.exists()) {
@@ -388,7 +394,9 @@ class _DockScreenState extends State<DockScreen>
         }
       }
     }
-    if (WindowsIntegration.lastIconDebugTrace.isNotEmpty && !_lastImportDebugLog.contains(WindowsIntegration.lastIconDebugTrace)) {
+
+    if (WindowsIntegration.lastIconDebugTrace.isNotEmpty &&
+        !_lastImportDebugLog.contains(WindowsIntegration.lastIconDebugTrace)) {
       _lastImportDebugLog = '${_lastImportDebugLog.trim()}\n--- Трасс извлечения иконки ---\n${WindowsIntegration.lastIconDebugTrace}'.trim();
     }
     if (updatedAnyPath) {
@@ -945,13 +953,13 @@ class _DockScreenState extends State<DockScreen>
       final isVertical = _settings.screenEdge == DockEdge.left || _settings.screenEdge == DockEdge.right;
       final maxIcon = _settings.baseIconSize + (_settings.hoverZoomMode == HoverZoomMode.none ? 0 : _settings.zoomDeltaPx);
       final rowsFactor = isVertical ? 1 : _settings.rowCount.clamp(1, 3);
-      final dockThickness = (maxIcon * rowsFactor + 95.0).clamp(185.0, 460.0);
+      final dockThickness = (maxIcon * rowsFactor + 95.0).clamp(185.0, 900.0);
 
       final activeItems = _getFilteredItems();
       final itemSlots = activeItems.where((e) => !e.isSeparator).length;
       final sepSlots = activeItems.where((e) => e.isSeparator).length;
       final perRowSpan = ((itemSlots / rowsFactor).ceil() * (_settings.baseIconSize + 8.0) + sepSlots * 14.0 + 180.0)
-          .clamp(680.0, 1720.0);
+          .clamp(680.0, 4096.0);
 
       final double bias = (_settings.edgeCenterOffsetPercent / 100.0).clamp(-1.0, 1.0);
       Alignment align = Alignment(bias, 1.0);
@@ -1199,7 +1207,7 @@ class _DockScreenState extends State<DockScreen>
     try {
       final dir = Directory(path);
       if (await dir.exists()) {
-        final raw = await dir.list().take(40).toList();
+        final raw = await dir.list().take(500).toList();
         if (_settings.sortFoldersFirstInStack) {
           raw.sort((a, b) {
             final aDir = a is Directory ? 0 : 1;
@@ -1208,7 +1216,7 @@ class _DockScreenState extends State<DockScreen>
             return a.path.toLowerCase().compareTo(b.path.toLowerCase());
           });
         }
-        entries = raw.take(15).toList();
+        entries = raw.take(200).toList();
       }
     } catch (_) {}
 
