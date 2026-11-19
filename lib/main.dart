@@ -298,6 +298,9 @@ class _DockScreenState extends State<DockScreen>
       }
     }
 
+    if (WindowsIntegration.lastIconDebugTrace.isNotEmpty) {
+      _lastImportDebugLog = '${_lastImportDebugLog.trim()}\n--- Последний трасс извлечения иконки ---\n${WindowsIntegration.lastIconDebugTrace}'.trim();
+    }
     await _warmUpIconCache();
     await PortableStorage.save(_settings, items);
     if (mounted) {
@@ -356,6 +359,9 @@ class _DockScreenState extends State<DockScreen>
           warmed++;
         }
       }
+    }
+    if (WindowsIntegration.lastIconDebugTrace.isNotEmpty && !_lastImportDebugLog.contains(WindowsIntegration.lastIconDebugTrace)) {
+      _lastImportDebugLog = '${_lastImportDebugLog.trim()}\n--- Трасс извлечения иконки ---\n${WindowsIntegration.lastIconDebugTrace}'.trim();
     }
     if (updatedAnyPath) {
       await PortableStorage.save(_settings, items);

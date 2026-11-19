@@ -1,6 +1,6 @@
-version: 2.5.9
+version: 2.6.0
 status: active
 current_state:
-  - Реализован разбор индекса иконки (?N) из FileName при импорте классического RocketDock INI, учёт iconIndex в extractNativeIconBmp (ExtractIconExW) и ключе дискового кэша, а также сохранение извлечённых BMP в двухслойном кэше (диск + ОЗУ).
+  - Добавлен пошаговый диагностический трасс WindowsIntegration.lastIconDebugTrace в extractNativeIconBmp() и вывод причины отказа/результата извлечения в диагностику окна настроек («О программе» -> «Диагностика импорта INI»).
 next_step:
-  - Распаковать архив в локальный репозиторий и выполнить проверку на Windows (dart analyze / flutter test / flutter build windows --release).
+  - Распаковать архив в локальный репозиторий, запустить на Windows, нажать «Переизвлечь из программ» и посмотреть трасс в «О программе» -> «Диагностика импорта INI».

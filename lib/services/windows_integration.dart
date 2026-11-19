@@ -331,6 +331,7 @@ class WindowsIntegration {
   static int lastWindowScanMicros = 0;
   static int totalWindowScanMicros = 0;
   static final List<String> _activityLog = [];
+  static String lastIconDebugTrace = '';
 
   static void recordActivity(String entry, {int? durationMs}) {
     final now = DateTime.now();
@@ -688,17 +689,35 @@ class WindowsIntegration {
     return p;
   }
 
-  /// Pure Win32 FFI icon extractor (SHGetFileInfoW + GetDIBits -> 32-bit BGRA BMP, 0 PowerShell processes)
+  /// Pure Win32 FFI icon extractor with detailed step-by-step diagnostic trace
   static String? extractNativeIconBmp(String filePath, {int iconIndex = 0}) {
-    if (!Platform.isWindows || !_ensureFfi()) return null;
+    final dbg = StringBuffer();
+    dbg.writeln('path="$filePath" idx=$iconIndex exists=${File(filePath).existsSync()} dir=${Directory(filePath).existsSync()}');
+    if (!Platform.isWindows) {
+      dbg.writeln('stop: !Platform.isWindows');
+      lastIconDebugTrace = dbg.toString().trimRight();
+      return null;
+    }
+    if (!_ensureFfi()) {
+      dbg.writeln('stop: _ensureFfi() returned false');
+      lastIconDebugTrace = dbg.toString().trimRight();
+      return null;
+    }
+    dbg.writeln('ffi: shgfi=${_shGetFileInfoW != null} extEx=${_extractIconExW != null} getIconInfo=${_getIconInfo != null} getObj=${_getObjectW != null} getDIBits=${_getDIBits != null} getDC=${_getDC != null}');
     if (_getIconInfo == null || _getObjectW == null || _getDIBits == null || _getDC == null || _releaseDC == null) {
+      dbg.writeln('stop: missing required Win32 functions');
+      lastIconDebugTrace = dbg.toString().trimRight();
       return null;
     }
     final sw = Stopwatch()..start();
     final cacheDir = PortableStorage.iconsCacheDir;
     final hash = filePath.hashCode.abs().toString();
     final outPath = '${cacheDir.path}${Platform.pathSeparator}icon_native_${hash}_i${iconIndex.abs()}.bmp';
-    if (File(outPath).existsSync()) return outPath;
+    if (File(outPath).existsSync()) {
+      dbg.writeln('hit disk cache: $outPath');
+      lastIconDebugTrace = dbg.toString().trimRight();
+      return outPath;
+    }
 
     final pathPtr = filePath.toNativeUtf16();
     final shfi = calloc<_ShFileInfoW>();
@@ -713,13 +732,15 @@ class WindowsIntegration {
         // SHGFI_ICON (0x100) | SHGFI_LARGEICON (0x0)
         final res = _shGetFileInfoW!(pathPtr, 0, shfi, sizeOf<_ShFileInfoW>(), 0x000000100);
         hIcon = res != 0 ? shfi.ref.hIcon : 0;
+        dbg.writeln('SHGetFileInfoW: res=$res hIcon=$hIcon');
       }
       if (hIcon == 0 && _extractIconExW != null) {
         final largePtr = calloc<IntPtr>();
         final smallPtr = calloc<IntPtr>();
         try {
-          _extractIconExW!(pathPtr, iconIndex, largePtr, smallPtr, 1);
+          final extCount = _extractIconExW!(pathPtr, iconIndex, largePtr, smallPtr, 1);
           hIcon = largePtr.value != 0 ? largePtr.value : smallPtr.value;
+          dbg.writeln('ExtractIconExW: count=$extCount large=${largePtr.value} small=${smallPtr.value} chosen=$hIcon');
           if (largePtr.value != 0 && hIcon != largePtr.value && _destroyIcon != null) {
             _destroyIcon!(largePtr.value);
           }
@@ -731,16 +752,40 @@ class WindowsIntegration {
           calloc.free(smallPtr);
         }
       }
-      if (hIcon == 0) return null;
+      if (hIcon == 0) {
+        dbg.writeln('stop: hIcon == 0');
+        lastIconDebugTrace = dbg.toString().trimRight();
+        return null;
+      }
 
-      if (_getIconInfo!(hIcon, iconInfo) == 0) return null;
+      if (_getIconInfo!(hIcon, iconInfo) == 0) {
+        dbg.writeln('stop: GetIconInfo returned 0');
+        lastIconDebugTrace = dbg.toString().trimRight();
+        return null;
+      }
       final hbmColor = iconInfo.ref.hbmColor;
-      if (hbmColor == 0) return null;
+      final hbmMask = iconInfo.ref.hbmMask;
+      dbg.writeln('GetIconInfo: hbmColor=$hbmColor hbmMask=$hbmMask');
+      if (hbmColor == 0) {
+        dbg.writeln('stop: hbmColor == 0');
+        lastIconDebugTrace = dbg.toString().trimRight();
+        return null;
+      }
 
-      if (_getObjectW!(hbmColor, sizeOf<_Bitmap>(), bmpStruct.cast<Void>()) == 0) return null;
+      if (_getObjectW!(hbmColor, sizeOf<_Bitmap>(), bmpStruct.cast<Void>()) == 0) {
+        dbg.writeln('stop: GetObjectW returned 0');
+        lastIconDebugTrace = dbg.toString().trimRight();
+        return null;
+      }
       final width = bmpStruct.ref.bmWidth;
       final height = bmpStruct.ref.bmHeight.abs();
-      if (width <= 0 || height <= 0 || width > 512 || height > 512) return null;
+      final bpp = bmpStruct.ref.bmBitsPixel;
+      dbg.writeln('Bitmap: w=$width h=$height bpp=$bpp');
+      if (width <= 0 || height <= 0 || width > 512 || height > 512) {
+        dbg.writeln('stop: invalid bitmap dimensions');
+        lastIconDebugTrace = dbg.toString().trimRight();
+        return null;
+      }
 
       final imageSize = width * height * 4;
       bih.ref.biSize = sizeOf<_BitmapInfoHeader>();
@@ -755,26 +800,14 @@ class WindowsIntegration {
       final pixels = calloc<Uint8>(imageSize);
       try {
         final lines = _getDIBits!(hdc, hbmColor, 0, height, pixels, bih, 0);
-        if (lines == 0) return null;
+        dbg.writeln('GetDIBits: lines=$lines');
+        if (lines == 0) {
+          dbg.writeln('stop: GetDIBits returned 0');
+          lastIconDebugTrace = dbg.toString().trimRight();
+          return null;
+        }
 
         final fileSize = 54 + imageSize;
-        final header = BytesBuilder(copy: false);
-        header.add([0x42, 0x4D]); // 'BM'
-        header.add(_u32(fileSize));
-        header.add(_u32(0));
-        header.add(_u32(54));
-        header.add(_u32(40));
-        header.add(_i32(width));
-        header.add(_i32(height));
-        header.add(_u16(1));
-        header.add(_u16(32));
-        header.add(_u32(0));
-        header.add(_u32(imageSize));
-        header.add(_i32(0));
-        header.add(_i32(0));
-        header.add(_u32(0));
-        header.add(_u32(0));
-
         final rawView = pixels.asTypedList(imageSize);
         final rgbaBytes = Uint8List(imageSize);
         int anyAlpha = 0;
@@ -784,7 +817,6 @@ class WindowsIntegration {
             break;
           }
         }
-        // Flip bottom-up DIB rows to top-down for standard BMP decoders & normalize alpha
         final rowBytes = width * 4;
         for (int y = 0; y < height; y++) {
           final srcRow = (height - 1 - y) * rowBytes;
@@ -800,7 +832,6 @@ class WindowsIntegration {
             rgbaBytes[dstRow + x + 3] = a;
           }
         }
-        // Store negative biHeight so top-down pixel order is explicit
         final topDownHeader = BytesBuilder(copy: false);
         topDownHeader.add([0x42, 0x4D]); // 'BM'
         topDownHeader.add(_u32(fileSize));
@@ -824,12 +855,16 @@ class WindowsIntegration {
         File(outPath).writeAsBytesSync(outBytes, flush: false);
 
         sw.stop();
-        recordActivity('Win32 FFI иконка (без PowerShell): ${filePath.split(RegExp(r'[/\]')).last}', durationMs: sw.elapsedMilliseconds);
+        dbg.writeln('ok wrote: $outPath (${outBytes.length} bytes)');
+        lastIconDebugTrace = dbg.toString().trimRight();
+        recordActivity('Win32 FFI иконка (без PowerShell): ${filePath.split(RegExp(r'[/\\]')).last}', durationMs: sw.elapsedMilliseconds);
         return outPath;
       } finally {
         calloc.free(pixels);
       }
-    } catch (_) {
+    } catch (e) {
+      dbg.writeln('exception: $e');
+      lastIconDebugTrace = dbg.toString().trimRight();
       return null;
     } finally {
       if (hdc != 0) _releaseDC!(0, hdc);
