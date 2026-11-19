@@ -650,6 +650,24 @@ class WindowsIntegration {
     }
   }
 
+  /// Resolves a .lnk shortcut to its underlying target path once so icons can be extracted directly from the app
+  static Future<String> resolveShortcutTargetIfNeeded(String rawPath) async {
+    final p = rawPath.trim();
+    if (!Platform.isWindows || !p.toLowerCase().endsWith('.lnk')) return p;
+    try {
+      final f = File(p);
+      if (!await f.exists()) return p;
+      final escaped = p.replaceAll("'", "''");
+      final cmd = "\$s=(New-Object -ComObject WScript.Shell).CreateShortcut('$escaped'); if(\$s.TargetPath){Write-Output \$s.TargetPath}";
+      final res = await Process.run('powershell', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', cmd]);
+      if (res.exitCode == 0) {
+        final resolved = res.stdout.toString().trim();
+        if (resolved.isNotEmpty) return resolved;
+      }
+    } catch (_) {}
+    return p;
+  }
+
   /// Pure Win32 FFI icon extractor (SHGetFileInfoW + GetDIBits -> 32-bit BGRA BMP, 0 PowerShell processes)
   static String? extractNativeIconBmp(String filePath) {
     if (!Platform.isWindows || !_ensureFfi()) return null;

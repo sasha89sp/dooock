@@ -26,7 +26,7 @@ void main() {
     expect(restored.monitorIndex, 1);
   });
 
-  test('PortableStorage parses classic RocketDock INI format', () {
+  test('PortableStorage parses classic RocketDock INI format with env vars', () {
     const ini = '''
 [Software\RocketDock]
 IconMin=48
@@ -37,7 +37,7 @@ Monitor=2
 [Software\RocketDock\Icons]
 Count=2
 0-Title=Блокнот
-0-Command=notepad.exe
+0-Command="%SystemRoot%\System32\notepad.exe"
 1-IsSeparator=1
 ''';
     final res = PortableStorage.parseIniString(
@@ -50,6 +50,7 @@ Count=2
     expect(res.settings.baseIconSize, 48.0);
     expect(res.settings.monitorIndex, 1);
     expect(res.items[0].title, 'Блокнот');
+    expect(res.items[0].targetPath.contains('notepad.exe'), true);
     expect(res.items[1].isSeparator, true);
   });
 }

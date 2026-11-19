@@ -327,7 +327,7 @@ class PortableStorage {
       const encoder = JsonEncoder.withIndent('  ');
       await jsonFile.writeAsString(encoder.convert({
         'portable': true,
-        'version': '2.5.4',
+        'version': '2.5.6',
         'settings': settings.toMap(),
         'items': items.map((e) => e.toJson()).toList(),
       }));
@@ -608,6 +608,21 @@ class PortableStorage {
     }
   }
 
+  static String _expandEnvVars(String input) {
+    var out = input.trim();
+    if (out.length >= 2 && out.startsWith('"') && out.endsWith('"')) {
+      out = out.substring(1, out.length - 1).trim();
+    }
+    if (!out.contains('%')) return out;
+    return out.replaceAllMapped(RegExp(r'%([^%]+)%'), (m) {
+      final key = m.group(1) ?? '';
+      final envVal = Platform.environment[key] ??
+          Platform.environment[key.toUpperCase()] ??
+          Platform.environment[key.toLowerCase()];
+      return envVal ?? m.group(0)!;
+    });
+  }
+
   static List<DockItemData> _convertClassicIcons(
     Map<int, Map<String, String>> propsMap,
     int count,
@@ -639,11 +654,11 @@ class PortableStorage {
         continue;
       }
 
-      final rawTitle = (p['Title'] ?? '').trim();
-      final rawCmd = (p['Command'] ?? '').trim();
-      final rawArgs = (p['Arguments'] ?? '').trim();
-      final rawWorkDir = (p['WorkingDirectory'] ?? '').trim();
-      final rawFileName = (p['FileName'] ?? '').trim();
+      final rawTitle = _expandEnvVars(p['Title'] ?? '');
+      final rawCmd = _expandEnvVars(p['Command'] ?? '');
+      final rawArgs = _expandEnvVars(p['Arguments'] ?? '');
+      final rawWorkDir = _expandEnvVars(p['WorkingDirectory'] ?? '');
+      final rawFileName = _expandEnvVars(p['FileName'] ?? '');
 
       if (rawCmd.isEmpty) {
         missingCmdCount++;

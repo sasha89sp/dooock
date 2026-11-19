@@ -1195,7 +1195,7 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
                     children: [
                       Text('RocketDock Portable macOS Edition', style: TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700)),
                       SizedBox(height: 3),
-                      Text('Версия 2.5.4 • Win32 FFI Native Icons & Silent INI Import', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
+                      Text('Версия 2.5.6 • Env-Expanded Icons & Verified INI Import', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
                       SizedBox(height: 3),
                       Text('Чёткие иконки • 2D-наведение по рядам • Импорт Settings.ini', style: TextStyle(color: Colors.white60, fontSize: 11.5)),
                     ],

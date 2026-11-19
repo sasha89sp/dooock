@@ -242,27 +242,46 @@ class _DockScreenState extends State<DockScreen>
 
   final Set<String> _attemptedNativeIconIds = {};
 
+  String _resolveEnvPath(String raw) {
+    var out = raw.trim();
+    if (out.length >= 2 && out.startsWith('"') && out.endsWith('"')) {
+      out = out.substring(1, out.length - 1).trim();
+    }
+    if (!out.contains('%')) return out;
+    return out.replaceAllMapped(RegExp(r'%([^%]+)%'), (m) {
+      final k = m.group(1) ?? '';
+      return Platform.environment[k] ??
+          Platform.environment[k.toUpperCase()] ??
+          Platform.environment[k.toLowerCase()] ??
+          m.group(0)!;
+    });
+  }
+
   Future<void> _warmUpIconCache() async {
     int warmed = 0;
     bool updatedAnyPath = false;
     for (final item in items) {
-      if (warmed >= _maxCachedIcons) break;
       if (item.isSeparator || item.isHardwareWidget || item.isWidgetPlugin || item.isPowerAction) {
         continue;
       }
-      String path = item.customIconPath;
+      String path = _resolveEnvPath(item.customIconPath);
+      final target = _resolveEnvPath(item.targetPath);
       if (path.isEmpty &&
           Platform.isWindows &&
           _settings.autoExtractExeIcons &&
           !_attemptedNativeIconIds.contains(item.id) &&
-          item.targetPath.isNotEmpty) {
+          target.isNotEmpty) {
         _attemptedNativeIconIds.add(item.id);
-        final tLower = item.targetPath.toLowerCase();
+        final tLower = target.toLowerCase();
         if (!tLower.startsWith('http://') &&
             !tLower.startsWith('https://') &&
             !tLower.startsWith('shell:') &&
             !tLower.startsWith('ms-')) {
-          final extracted = WindowsIntegration.extractNativeIconBmp(item.targetPath);
+          final effectiveTarget = _resolveEnvPath(
+            await WindowsIntegration.resolveShortcutTargetIfNeeded(target),
+          );
+          final extracted = WindowsIntegration.extractNativeIconBmp(effectiveTarget) ??
+              WindowsIntegration.extractNativeIconBmp(target);
           if (extracted != null) {
             item.customIconPath = extracted;
             path = extracted;
@@ -270,7 +289,7 @@ class _DockScreenState extends State<DockScreen>
           }
         }
       }
-      if (path.isNotEmpty && !_imageCache.containsKey(path)) {
+      if (path.isNotEmpty && warmed < _maxCachedIcons && !_imageCache.containsKey(path)) {
         final file = File(path);
         if (await file.exists()) {
           _cacheImageProvider(path, _buildSizedFileImage(file));
@@ -279,7 +298,7 @@ class _DockScreenState extends State<DockScreen>
       }
     }
     if (updatedAnyPath) {
-      unawaited(PortableStorage.save(_settings, items));
+      await PortableStorage.save(_settings, items);
     }
     if (mounted) _frameTick.value++;
     WindowsIntegration.trimProcessWorkingSet();
@@ -763,6 +782,7 @@ class _DockScreenState extends State<DockScreen>
       return;
     }
 
+    _attemptedNativeIconIds.clear();
     setState(() {
       _settings = result.settings;
       if (result.items.isNotEmpty) {
@@ -993,7 +1013,9 @@ class _DockScreenState extends State<DockScreen>
     await _applyWindowProperties();
 
     if (!isDir && _settings.autoExtractExeIcons) {
-      final extractedIcon = WindowsIntegration.extractNativeIconBmp(path);
+      final resolvedPath = await WindowsIntegration.resolveShortcutTargetIfNeeded(path);
+      final extractedIcon = WindowsIntegration.extractNativeIconBmp(resolvedPath) ??
+          WindowsIntegration.extractNativeIconBmp(path);
       if (extractedIcon != null && mounted) {
         final file = File(extractedIcon);
         if (await file.exists()) {
@@ -2175,7 +2197,8 @@ class _DockScreenState extends State<DockScreen>
   }
 
   Widget _buildMacSquircleIcon(DockItemData item, double size) {
-    final cachedProvider = item.customIconPath.isNotEmpty ? _imageCache[item.customIconPath] : null;
+    final iconKey = _resolveEnvPath(item.customIconPath);
+    final cachedProvider = iconKey.isNotEmpty ? _imageCache[iconKey] : null;
     if (cachedProvider != null) {
       return Container(
         width: size,
@@ -2203,67 +2226,7 @@ class _DockScreenState extends State<DockScreen>
   }
 
   Widget _buildFallbackSquircle(DockItemData item, double size) {
-    final style = _getMacIconStyle(item);
-    final radius = size * 0.225;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: style.colors,
-        ),
-        border: Border.all(color: Colors.white.withOpacity(0.38), width: 0.85),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.32), blurRadius: 5, offset: const Offset(0, 2.5)),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: size * 0.46,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.white.withOpacity(0.36), Colors.white.withOpacity(0.0)],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: size * 0.24,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(radius)),
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [Colors.white.withOpacity(0.14), Colors.white.withOpacity(0.0)],
-                ),
-              ),
-            ),
-          ),
-          Icon(
-            style.icon,
-            color: Colors.white,
-            size: size * 0.56,
-            shadows: [Shadow(color: Colors.black.withOpacity(0.30), blurRadius: 3, offset: const Offset(0, 1.5))],
-          ),
-        ],
-      ),
-    );
+    return SizedBox(width: size, height: size);
   }
 
   int _quickLaunchSlotForItem(DockItemData target) {
