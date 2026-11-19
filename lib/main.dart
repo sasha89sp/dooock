@@ -117,7 +117,35 @@ class _DockScreenState extends State<DockScreen>
     );
   }
 
+  /// Rebuilds providers in place (e.g. new decode size) without ever leaving icons uncached
+  void _refreshImageCache() {
+    for (final key in _imageCache.keys.toList()) {
+      _imageCache[key] = _buildSizedFileImage(File(key));
+    }
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+  }
+
+  final Set<String> _missingIconKeys = {};
+
+  /// Returns a cached provider or lazily creates it, so a cleared cache never shows placeholders
+  ImageProvider? _providerFor(String key) {
+    if (key.isEmpty) return null;
+    final cached = _imageCache[key];
+    if (cached != null) return cached;
+    if (_missingIconKeys.contains(key)) return null;
+    final file = File(key);
+    if (!file.existsSync()) {
+      _missingIconKeys.add(key);
+      return null;
+    }
+    final provider = _buildSizedFileImage(file);
+    _cacheImageProvider(key, provider);
+    return provider;
+  }
+
   void _clearImageCache() {
+    _missingIconKeys.clear();
     _imageCache.clear();
     _imageLruKeys.clear();
     PaintingBinding.instance.imageCache.clear();
@@ -244,8 +272,6 @@ class _DockScreenState extends State<DockScreen>
 
   void _scheduleDebouncedSave() {
     _saveDebounceTimer?.cancel();
-    WindowsIntegration.unregisterGlobalToggleHotkey();
-    _idleTrimTimer?.cancel();
     _saveDebounceTimer = Timer(const Duration(milliseconds: 350), () {
       unawaited(PortableStorage.save(_settings, items));
     });
@@ -260,12 +286,7 @@ class _DockScreenState extends State<DockScreen>
 
     _physicsTicker = createTicker(_onPhysicsTick);
 
-    _initSystemTray();
     _loadAllSettings();
-    _startTimers();
-    if (_settings.globalHotkeysEnabled) {
-      WindowsIntegration.registerGlobalToggleHotkey();
-    }
   }
 
   final Set<String> _attemptedNativeIconIds = {};
@@ -482,19 +503,6 @@ class _DockScreenState extends State<DockScreen>
       DockItemData(id: '7', title: 'Документы', iconName: 'folder', targetPath: docsPath, isFolderStack: true),
       DockItemData(id: '8', title: 'Корзина', iconName: 'recycle', targetPath: 'shell:RecycleBinFolder'),
       DockItemData(id: '9', title: 'Разделитель', iconName: '', targetPath: '', isSeparator: true),
-      DockItemData(id: '10', title: 'Часы', iconName: 'weather', targetPath: 'ms-clock:', isWidgetPlugin: true, widgetType: 'clock'),
-      DockItemData(id: '11', title: 'Рабочие столы', iconName: 'desktops', targetPath: '', isWidgetPlugin: true, widgetType: 'desktops'),
-      DockItemData(id: '12', title: 'ОЗУ (RAM)', iconName: 'memory', targetPath: 'taskmgr.exe', isHardwareWidget: true, hardwareType: 'ram'),
-      DockItemData(id: '13', title: 'Температура CPU', iconName: 'temp', targetPath: 'taskmgr.exe', isHardwareWidget: true, hardwareType: 'temp'),
-      DockItemData(id: '14', title: 'CPU', iconName: 'cpu', targetPath: 'taskmgr.exe', isHardwareWidget: true, hardwareType: 'cpu'),
-      DockItemData(id: '14b', title: 'Сеть', iconName: 'net', targetPath: 'ncpa.cpl', isHardwareWidget: true, hardwareType: 'net'),
-      DockItemData(id: '14c', title: 'Громкость', iconName: 'vol', targetPath: 'mmsys.cpl', isHardwareWidget: true, hardwareType: 'vol'),
-      DockItemData(id: '14d', title: 'Батарея', iconName: 'bat', targetPath: 'powercfg.cpl', isHardwareWidget: true, hardwareType: 'bat'),
-      DockItemData(id: '15', title: 'Разделитель', iconName: '', targetPath: '', isSeparator: true),
-      DockItemData(id: '16', title: 'Сон', iconName: 'sleep', targetPath: '', isPowerAction: true, powerType: 'sleep'),
-      DockItemData(id: '17', title: 'Блокировка', iconName: 'lock', targetPath: '', isPowerAction: true, powerType: 'lock'),
-      DockItemData(id: '18', title: 'Перезагрузка', iconName: 'restart', targetPath: '', isPowerAction: true, powerType: 'restart'),
-      DockItemData(id: '19', title: 'Выключение', iconName: 'shutdown', targetPath: '', isPowerAction: true, powerType: 'shutdown'),
       DockItemData(id: '20', title: 'Настройка панели...', iconName: 'settings', targetPath: ''),
     ];
   }
@@ -570,7 +578,7 @@ class _DockScreenState extends State<DockScreen>
       if (_isEffectiveEcoMode) {
         _clockTimer?.cancel();
         _clockTimer = null;
-        _clearImageCache();
+        _refreshImageCache();
         WindowsIntegration.trimProcessWorkingSet();
       } else {
         await _warmUpIconCache();
@@ -631,6 +639,8 @@ class _DockScreenState extends State<DockScreen>
     _autoHideTimer?.cancel();
     _popupHoverTimer?.cancel();
     _saveDebounceTimer?.cancel();
+    _idleTrimTimer?.cancel();
+    WindowsIntegration.unregisterGlobalToggleHotkey();
     windowManager.removeListener(this);
     trayManager.removeListener(this);
     super.dispose();
@@ -794,6 +804,11 @@ class _DockScreenState extends State<DockScreen>
     }
     _availableProfiles = await PortableStorage.listSavedProfiles();
     unawaited(_initSystemTray());
+    if (_settings.globalHotkeysEnabled) {
+      WindowsIntegration.registerGlobalToggleHotkey();
+    } else {
+      WindowsIntegration.unregisterGlobalToggleHotkey();
+    }
     await _warmUpIconCache();
     await _applyWindowProperties();
     _startTimers();
@@ -993,31 +1008,23 @@ class _DockScreenState extends State<DockScreen>
     _targetPointerLocal = null;
     _clearImageCache();
     try {
-      // Hide the window while it jumps between dock and dialog sizes to avoid visible flicker
+      // Opaque background while the window is dialog-sized: a transparent window leaves artifacts around dialogs
       try {
-        await windowManager.setOpacity(0.0);
+        await windowManager.setBackgroundColor(const Color(0xFF1E1E22));
       } catch (_) {}
       await windowManager.setAlwaysOnTop(false);
       await windowManager.setSize(const Size(780, 620));
       await windowManager.setAlignment(Alignment.center);
       await windowManager.show();
       await windowManager.focus();
-      await Future<void>.delayed(const Duration(milliseconds: 40));
-      try {
-        await windowManager.setOpacity(1.0);
-      } catch (_) {}
       return await showDialogFn();
     } finally {
       _isDialogOpen = false;
       try {
-        await windowManager.setOpacity(0.0);
+        await windowManager.setBackgroundColor(Colors.transparent);
       } catch (_) {}
       await _warmUpIconCache();
       await _applyWindowProperties();
-      await Future<void>.delayed(const Duration(milliseconds: 40));
-      try {
-        await windowManager.setOpacity(1.0);
-      } catch (_) {}
     }
   }
 
@@ -1526,7 +1533,7 @@ class _DockScreenState extends State<DockScreen>
         setState(() => _settings.ecoDesktopMode = !_settings.ecoDesktopMode);
         await PortableStorage.save(_settings, items);
         if (_settings.ecoDesktopMode) {
-          _clearImageCache();
+          _refreshImageCache();
         }
         await _warmUpIconCache();
         await _applyWindowProperties();
@@ -2323,7 +2330,7 @@ class _DockScreenState extends State<DockScreen>
 
   Widget _buildMacSquircleIcon(DockItemData item, double size) {
     final iconKey = _resolveEnvPath(item.customIconPath);
-    final cachedProvider = iconKey.isNotEmpty ? _imageCache[iconKey] : null;
+    final cachedProvider = _providerFor(iconKey);
     if (cachedProvider != null) {
       // Classic RocketDock look: icon as is — no rounded clipping, no box shadow under transparent pixels
       return SizedBox(

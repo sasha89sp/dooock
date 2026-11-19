@@ -237,6 +237,9 @@ typedef _GetMonitorInfoWDart = int Function(int hMonitor, Pointer<_MonitorInfo> 
 typedef _GetForegroundWindowNative = IntPtr Function();
 typedef _GetForegroundWindowDart = int Function();
 
+typedef _GetClassNameWNative = Int32 Function(IntPtr hwnd, Pointer<Utf16> lpClassName, Int32 nMaxCount);
+typedef _GetClassNameWDart = int Function(int hwnd, Pointer<Utf16> lpClassName, int nMaxCount);
+
 typedef _GetWindowRectNative = Int32 Function(IntPtr hwnd, Pointer<_Rect> lpRect);
 typedef _GetWindowRectDart = int Function(int hwnd, Pointer<_Rect> lpRect);
 
@@ -325,6 +328,7 @@ class WindowsIntegration {
   static _IsIconicDart? _isIconic;
   static _DestroyIconDart? _destroyIcon;
   static _ExtractIconExWDart? _extractIconExW;
+  static _GetClassNameWDart? _getClassNameW;
   static _PrivateExtractIconsWDart? _privateExtractIconsW;
   static _GetCurrentProcessDart? _getCurrentProcess;
   static _SetProcessWorkingSetSizeDart? _setProcessWorkingSetSize;
@@ -397,6 +401,9 @@ class WindowsIntegration {
         _getMonitorInfoW = _user32!.lookupFunction<_GetMonitorInfoWNative, _GetMonitorInfoWDart>('GetMonitorInfoW');
         _getForegroundWindow = _user32!.lookupFunction<_GetForegroundWindowNative, _GetForegroundWindowDart>('GetForegroundWindow');
         _getWindowRect = _user32!.lookupFunction<_GetWindowRectNative, _GetWindowRectDart>('GetWindowRect');
+        try {
+          _getClassNameW = _user32!.lookupFunction<_GetClassNameWNative, _GetClassNameWDart>('GetClassNameW');
+        } catch (_) {}
         _monitorFromWindow = _user32!.lookupFunction<_MonitorFromWindowNative, _MonitorFromWindowDart>('MonitorFromWindow');
         _getIconInfo = _user32!.lookupFunction<_GetIconInfoNative, _GetIconInfoDart>('GetIconInfo');
         _getDC = _user32!.lookupFunction<_GetDCNative, _GetDCDart>('GetDC');
@@ -660,6 +667,24 @@ class WindowsIntegration {
     return _monitorsCache.isEmpty ? 1 : _monitorsCache.length;
   }
 
+  static bool _isShellWindow(int hwnd) {
+    if (_getClassNameW == null) return false;
+    final buf = calloc<Uint16>(64);
+    try {
+      final n = _getClassNameW!(hwnd, buf.cast<Utf16>(), 64);
+      if (n <= 0) return false;
+      final name = buf.cast<Utf16>().toDartString(length: n);
+      return name == 'Progman' ||
+          name == 'WorkerW' ||
+          name == 'Shell_TrayWnd' ||
+          name == 'Shell_SecondaryTrayWnd';
+    } catch (_) {
+      return false;
+    } finally {
+      calloc.free(buf);
+    }
+  }
+
   /// Detects if a foreground third-party window covers its entire monitor (fullscreen game / video)
   static bool isForegroundAppFullscreen() {
     if (!Platform.isWindows || !_ensureFfi()) return false;
@@ -668,6 +693,8 @@ class WindowsIntegration {
     }
     final hwnd = _getForegroundWindow!();
     if (hwnd == 0) return false;
+    // The desktop (Progman/WorkerW) and taskbar cover the whole monitor but are not a fullscreen app
+    if (_isShellWindow(hwnd)) return false;
 
     final pidPtr = calloc<Uint32>();
     try {

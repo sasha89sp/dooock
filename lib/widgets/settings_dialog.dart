@@ -102,22 +102,19 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // The dialog fills the whole (opaque) settings window: no transparent margin, no outer shadow
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(16),
+      elevation: 0,
+      insetPadding: EdgeInsets.zero,
       child: Container(
-        width: 740,
-        height: 580,
-        decoration: BoxDecoration(
-          color: const Color(0xF71E1E22),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.18), width: 1.0),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.65), blurRadius: 36, offset: const Offset(0, 16)),
-          ],
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E22),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.zero,
           child: Row(
             children: [
               Container(
