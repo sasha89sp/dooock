@@ -590,9 +590,6 @@ class _DockScreenState extends State<DockScreen>
           items = loaded.items;
         }
       });
-      if (loaded.importedCount > 0) {
-        unawaited(_extractMissingIconsInBackground());
-      }
     } else {
       await PortableStorage.save(_settings, items);
     }
@@ -600,27 +597,6 @@ class _DockScreenState extends State<DockScreen>
     await _warmUpIconCache();
     await _applyWindowProperties();
     _startTimers();
-  }
-
-  Future<void> _extractMissingIconsInBackground() async {
-    if (!Platform.isWindows || !_settings.autoExtractExeIcons) return;
-    for (int i = 0; i < items.length; i++) {
-      if (!mounted) return;
-      final item = items[i];
-      if (item.isSeparator || item.customIconPath.isNotEmpty || item.targetPath.isEmpty) continue;
-      final iconPath = await WindowsIntegration.extractJumboIcon(item.targetPath, enabled: true);
-      if (iconPath != null && mounted) {
-        final f = File(iconPath);
-        if (await f.exists()) {
-          _cacheImageProvider(iconPath, _buildSizedFileImage(f));
-          item.customIconPath = iconPath;
-        }
-      }
-    }
-    if (mounted) {
-      _frameTick.value++;
-      await PortableStorage.save(_settings, items);
-    }
   }
 
   Future<void> _showImportDebugDialog(String title, String details) async {
@@ -736,7 +712,6 @@ class _DockScreenState extends State<DockScreen>
     _playSound();
     await PortableStorage.save(_settings, items);
     await _applyWindowProperties();
-    unawaited(_extractMissingIconsInBackground());
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -964,14 +939,14 @@ class _DockScreenState extends State<DockScreen>
     await PortableStorage.save(_settings, items);
     await _applyWindowProperties();
 
-    if (!isDir) {
-      final extractedIcon = _isEffectiveEcoMode ? WindowsIntegration.extractNativeIconBmp(path) : await WindowsIntegration.extractJumboIcon(path, enabled: _settings.autoExtractExeIcons);
+    if (!isDir && _settings.autoExtractExeIcons) {
+      final extractedIcon = WindowsIntegration.extractNativeIconBmp(path);
       if (extractedIcon != null && mounted) {
         final file = File(extractedIcon);
         if (await file.exists()) {
           _cacheImageProvider(extractedIcon, _buildSizedFileImage(file));
           final idx = items.indexWhere((e) => e.id == newId);
-          if (idx != -1) {
+          if (idx != -1 && items[idx].customIconPath.isEmpty) {
             setState(() => items[idx].customIconPath = extractedIcon);
             await PortableStorage.save(_settings, items);
           }

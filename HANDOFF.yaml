@@ -1,6 +1,6 @@
-version: 2.4.9
+version: 2.5.0
 status: active
 current_state:
-  - Исправлены ошибки сборки Windows Release (v2.4.8): _launchQuickSlot перенесён из RocketDockApp в _DockScreenState, добавлен импорт dart:typed_data для Uint8List в windows_integration.dart.
+  - Удалены неиспользуемые объявления ExtractIconExW/DestroyIcon и пакетная фоновая обработка при импорте; обработка иконки выполняется строго один раз при первом добавлении элемента (_addFilePathToDock -> extractNativeIconBmp), исправлен порядок строк и альфа-канал 32-bit BMP.
 next_step:
-  - Распаковать архив в локальный репозиторий и выполнить точечную проверку на Windows (dart analyze / flutter build windows --release).
+  - Распаковать архив в локальный репозиторий и выполнить проверку на Windows (dart analyze / flutter build windows --release).

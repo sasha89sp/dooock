@@ -44,24 +44,6 @@ typedef _ShowWindowDart = int Function(int hwnd, int nCmdShow);
 typedef _IsIconicNative = Int32 Function(IntPtr hwnd);
 typedef _IsIconicDart = int Function(int hwnd);
 
-typedef _ExtractIconExWNative = Uint32 Function(
-  Pointer<Utf16> lpszFile,
-  Int32 nIconIndex,
-  Pointer<IntPtr> phiconLarge,
-  Pointer<IntPtr> phiconSmall,
-  Uint32 nIcons,
-);
-typedef _ExtractIconExWDart = int Function(
-  Pointer<Utf16> lpszFile,
-  int nIconIndex,
-  Pointer<IntPtr> phiconLarge,
-  Pointer<IntPtr> phiconSmall,
-  int nIcons,
-);
-
-typedef _DestroyIconNative = Int32 Function(IntPtr hIcon);
-typedef _DestroyIconDart = int Function(int hIcon);
-
 typedef _GetCurrentProcessNative = IntPtr Function();
 typedef _GetCurrentProcessDart = int Function();
 
@@ -258,8 +240,6 @@ class WindowsIntegration {
   static _SetForegroundWindowDart? _setForegroundWindow;
   static _ShowWindowDart? _showWindow;
   static _IsIconicDart? _isIconic;
-  static _ExtractIconExWDart? _extractIconExW;
-  static _DestroyIconDart? _destroyIcon;
   static _GetCurrentProcessDart? _getCurrentProcess;
   static _SetProcessWorkingSetSizeDart? _setProcessWorkingSetSize;
   static _GetProcessMemoryInfoDart? _getProcessMemoryInfo;
@@ -309,7 +289,6 @@ class WindowsIntegration {
       _setForegroundWindow = _user32!.lookupFunction<_SetForegroundWindowNative, _SetForegroundWindowDart>('SetForegroundWindow');
       _showWindow = _user32!.lookupFunction<_ShowWindowNative, _ShowWindowDart>('ShowWindow');
       _isIconic = _user32!.lookupFunction<_IsIconicNative, _IsIconicDart>('IsIconic');
-      _destroyIcon = _user32!.lookupFunction<_DestroyIconNative, _DestroyIconDart>('DestroyIcon');
       try {
         _enumDisplayMonitors = _user32!.lookupFunction<_EnumDisplayMonitorsNative, _EnumDisplayMonitorsDart>('EnumDisplayMonitors');
         _getMonitorInfoW = _user32!.lookupFunction<_GetMonitorInfoWNative, _GetMonitorInfoWDart>('GetMonitorInfoW');
@@ -319,11 +298,6 @@ class WindowsIntegration {
         _getIconInfo = _user32!.lookupFunction<_GetIconInfoNative, _GetIconInfoDart>('GetIconInfo');
         _getDC = _user32!.lookupFunction<_GetDCNative, _GetDCDart>('GetDC');
         _releaseDC = _user32!.lookupFunction<_ReleaseDCNative, _ReleaseDCDart>('ReleaseDC');
-      } catch (_) {}
-      try {
-        final shell32 = DynamicLibrary.open('shell32.dll');
-        _extractIconExW = shell32.lookupFunction<_ExtractIconExWNative, _ExtractIconExWDart>('ExtractIconExW');
-        _shGetFileInfoW = shell32.lookupFunction<_SHGetFileInfoWNative, _SHGetFileInfoWDart>('SHGetFileInfoW');
       } catch (_) {}
       try {
         final gdi32 = DynamicLibrary.open('gdi32.dll');
@@ -532,33 +506,6 @@ class WindowsIntegration {
     } catch (_) {}
   }
 
-  /// Fast native FFI probe for icons in .exe / .dll / .ico files without spawning a shell
-  static bool canExtractNativeIcon(String filePath) {
-    if (!Platform.isWindows || !_ensureFfi() || _extractIconExW == null || filePath.isEmpty) {
-      return false;
-    }
-    final pathPtr = filePath.toNativeUtf16();
-    final largePtr = calloc<IntPtr>();
-    final smallPtr = calloc<IntPtr>();
-    try {
-      final count = _extractIconExW!(pathPtr, 0, largePtr, smallPtr, 1);
-      if (largePtr.value != 0 && _destroyIcon != null) {
-        _destroyIcon!(largePtr.value);
-      }
-      if (smallPtr.value != 0 && _destroyIcon != null) {
-        _destroyIcon!(smallPtr.value);
-      }
-      return count > 0;
-    } catch (_) {
-      return false;
-    } finally {
-      calloc.free(pathPtr);
-      calloc.free(largePtr);
-      calloc.free(smallPtr);
-    }
-  }
-
-
   static final List<({int left, int top, int width, int height, bool isPrimary})> _monitorsCache = [];
 
   static int _monitorEnumCallback(int hMonitor, int hdcMonitor, Pointer<_Rect> lprcMonitor, int dwData) {
@@ -707,9 +654,52 @@ class WindowsIntegration {
         header.add(_u32(0));
         header.add(_u32(0));
 
+        final rawView = pixels.asTypedList(imageSize);
+        final rgbaBytes = Uint8List(imageSize);
+        int anyAlpha = 0;
+        for (int i = 0; i < imageSize; i += 4) {
+          if (rawView[i + 3] != 0) {
+            anyAlpha++;
+            break;
+          }
+        }
+        // Flip bottom-up DIB rows to top-down for standard BMP decoders & normalize alpha
+        final rowBytes = width * 4;
+        for (int y = 0; y < height; y++) {
+          final srcRow = (height - 1 - y) * rowBytes;
+          final dstRow = y * rowBytes;
+          for (int x = 0; x < rowBytes; x += 4) {
+            final b = rawView[srcRow + x];
+            final g = rawView[srcRow + x + 1];
+            final r = rawView[srcRow + x + 2];
+            final a = anyAlpha > 0 ? rawView[srcRow + x + 3] : ((b | g | r) == 0 ? 0 : 255);
+            rgbaBytes[dstRow + x] = b;
+            rgbaBytes[dstRow + x + 1] = g;
+            rgbaBytes[dstRow + x + 2] = r;
+            rgbaBytes[dstRow + x + 3] = a;
+          }
+        }
+        // Store negative biHeight so top-down pixel order is explicit
+        final topDownHeader = BytesBuilder(copy: false);
+        topDownHeader.add([0x42, 0x4D]); // 'BM'
+        topDownHeader.add(_u32(fileSize));
+        topDownHeader.add(_u32(0));
+        topDownHeader.add(_u32(54));
+        topDownHeader.add(_u32(40));
+        topDownHeader.add(_i32(width));
+        topDownHeader.add(_i32(-height));
+        topDownHeader.add(_u16(1));
+        topDownHeader.add(_u16(32));
+        topDownHeader.add(_u32(0));
+        topDownHeader.add(_u32(imageSize));
+        topDownHeader.add(_i32(0));
+        topDownHeader.add(_i32(0));
+        topDownHeader.add(_u32(0));
+        topDownHeader.add(_u32(0));
+
         final outBytes = Uint8List(fileSize);
-        outBytes.setAll(0, header.takeBytes());
-        outBytes.setAll(54, pixels.asTypedList(imageSize));
+        outBytes.setAll(0, topDownHeader.takeBytes());
+        outBytes.setAll(54, rgbaBytes);
         File(outPath).writeAsBytesSync(outBytes, flush: false);
 
         sw.stop();
@@ -737,113 +727,4 @@ class WindowsIntegration {
   static List<int> _u32(int v) => [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF];
   static List<int> _i32(int v) => _u32(v);
 
-  static Future<String?> extractJumboIcon(String filePath, {required bool enabled}) async {
-    if (!Platform.isWindows || !enabled || filePath.isEmpty) return null;
-    try {
-      final lower = filePath.toLowerCase();
-      if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.bmp')) {
-        return filePath;
-      }
-      final nativeBmp = extractNativeIconBmp(filePath);
-      if (nativeBmp != null) {
-        return nativeBmp;
-      }
-      final cacheDir = PortableStorage.iconsCacheDir;
-      final hash = filePath.hashCode.abs().toString();
-      final outPath = '${cacheDir.path}${Platform.pathSeparator}icon_hd_$hash.png';
-      if (await File(outPath).exists()) {
-        return outPath;
-      }
-
-      final escapedIn = filePath.replaceAll("'", "''");
-      final escapedOut = outPath.replaceAll("'", "''");
-      final psScript = '''
-Add-Type -AssemblyName System.Drawing
-\$src = @'
-using System;
-using System.Runtime.InteropServices;
-public class JumboIcon {
-  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-  public struct SHFILEINFO {
-    public IntPtr hIcon;
-    public int iIcon;
-    public uint dwAttributes;
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-    public string szDisplayName;
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)]
-    public string szTypeName;
-  }
-  [ComImport, Guid("46EB5926-582E-4017-9FDF-E8998DAA0950"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-  public interface IImageList {
-    int Add(IntPtr hbmImage, IntPtr hbmMask, ref int pi);
-    int ReplaceIcon(int i, IntPtr hicon, ref int pi);
-    int SetOverlayImage(int iImage, int iOverlay);
-    int Replace(int i, IntPtr hbmImage, IntPtr hbmMask);
-    int AddMasked(IntPtr hbmImage, int crMask, ref int pi);
-    int Draw(IntPtr pimldp);
-    int Remove(int i);
-    int GetIcon(int i, int flags, ref IntPtr picon);
-  }
-  [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-  public static extern IntPtr SHGetFileInfo(string pszPath, uint dwFileAttributes, ref SHFILEINFO psfi, uint cbFileInfo, uint uFlags);
-  [DllImport("shell32.dll", EntryPoint = "#727")]
-  public static extern int SHGetImageList(int iImageList, ref Guid riid, out IImageList ppv);
-  [DllImport("user32.dll")]
-  public static extern bool DestroyIcon(IntPtr hIcon);
-  public static IntPtr Get256Icon(string path) {
-    SHFILEINFO shfi = new SHFILEINFO();
-    SHGetFileInfo(path, 0, ref shfi, (uint)Marshal.SizeOf(shfi), 0x4000);
-    Guid iid = new Guid("46EB5926-582E-4017-9FDF-E8998DAA0950");
-    IImageList iml;
-    if (SHGetImageList(0x4, ref iid, out iml) == 0 && iml != null) {
-      IntPtr hIcon = IntPtr.Zero;
-      iml.GetIcon(shfi.iIcon, 1, ref hIcon);
-      if (hIcon != IntPtr.Zero) return hIcon;
-    }
-    return IntPtr.Zero;
-  }
-}
-'@
-Add-Type -TypeDefinition \$src -ErrorAction SilentlyContinue
-\$path = '$escapedIn'
-if (\$path.ToLower().EndsWith('.lnk')) {
-  \$shell = New-Object -ComObject WScript.Shell
-  \$shortcut = \$shell.CreateShortcut(\$path)
-  if (\$shortcut.TargetPath -and (Test-Path \$shortcut.TargetPath)) {
-    \$path = \$shortcut.TargetPath
-  }
-}
-if (Test-Path \$path) {
-  \$hIcon = [JumboIcon]::Get256Icon(\$path)
-  if (\$hIcon -ne [IntPtr]::Zero) {
-    \$ico = [System.Drawing.Icon]::FromHandle(\$hIcon)
-    \$bmp = \$ico.ToBitmap()
-    \$bmp.Save('$escapedOut', [System.Drawing.Imaging.ImageFormat]::Png)
-    \$bmp.Dispose()
-    \$ico.Dispose()
-    [JumboIcon]::DestroyIcon(\$hIcon) | Out-Null
-  } else {
-    \$icon = [System.Drawing.Icon]::ExtractAssociatedIcon(\$path)
-    if (\$icon -ne \$null) {
-      \$bmp = \$icon.ToBitmap()
-      \$bmp.Save('$escapedOut', [System.Drawing.Imaging.ImageFormat]::Png)
-      \$bmp.Dispose()
-      \$icon.Dispose()
-    }
-  }
-}
-''';
-      final psSw = Stopwatch()..start();
-      final result = await Process.run(
-        'powershell',
-        ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', psScript],
-      );
-      psSw.stop();
-      recordActivity('powershell.exe (иконка: ${filePath.split(RegExp(r'[/\\]')).last})', durationMs: psSw.elapsedMilliseconds);
-      if (result.exitCode == 0 && await File(outPath).exists()) {
-        return outPath;
-      }
-    } catch (_) {}
-    return null;
-  }
 }
