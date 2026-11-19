@@ -43,34 +43,6 @@ void main() async {
 class RocketDockApp extends StatelessWidget {
   const RocketDockApp({super.key});
 
-  void _launchQuickSlot(int slotZeroBased) {
-    if (!_settings.altNumberQuickLaunch) return;
-    final launchable = _getFilteredItems()
-        .where((it) => !it.isSeparator && !it.isHardwareWidget && !it.isWidgetPlugin && !it.isPowerAction)
-        .toList();
-    if (slotZeroBased < 0 || slotZeroBased >= launchable.length) return;
-    final targetItem = launchable[slotZeroBased];
-    final realIdx = items.indexOf(targetItem);
-    if (realIdx != -1) {
-      _triggerClickEffect(realIdx);
-    }
-    if (targetItem.iconName == 'settings') {
-      _playSound();
-      _openSettingsModal();
-    } else if (targetItem.isFolderStack && realIdx != -1) {
-      _playSound();
-      _openFolderStack(realIdx);
-    } else if (targetItem.targetPath.isNotEmpty) {
-      _launchTargetNonBlocking(
-        targetItem.targetPath,
-        itemId: targetItem.id,
-        displayTitle: targetItem.title,
-        arguments: targetItem.arguments,
-        workingDirectory: targetItem.workingDirectory,
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -1673,6 +1645,34 @@ class _DockScreenState extends State<DockScreen>
         ),
       ),
     );
+  }
+
+  void _launchQuickSlot(int slotZeroBased) {
+  if (!_settings.altNumberQuickLaunch) return;
+  final launchable = _getFilteredItems()
+  .where((it) => !it.isSeparator && !it.isHardwareWidget && !it.isWidgetPlugin && !it.isPowerAction)
+  .toList();
+  if (slotZeroBased < 0 || slotZeroBased >= launchable.length) return;
+  final targetItem = launchable[slotZeroBased];
+  final realIdx = items.indexOf(targetItem);
+  if (realIdx != -1) {
+  _triggerClickEffect(realIdx);
+  }
+  if (targetItem.iconName == 'settings') {
+  _playSound();
+  _openSettingsModal();
+  } else if (targetItem.isFolderStack && realIdx != -1) {
+  _playSound();
+  _openFolderStack(realIdx);
+  } else if (targetItem.targetPath.isNotEmpty) {
+  _launchTargetNonBlocking(
+  targetItem.targetPath,
+  itemId: targetItem.id,
+  displayTitle: targetItem.title,
+  arguments: targetItem.arguments,
+  workingDirectory: targetItem.workingDirectory,
+  );
+  }
   }
 
   @override
