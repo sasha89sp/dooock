@@ -1853,35 +1853,6 @@ class _DockScreenState extends State<DockScreen>
     return base + (_settings.zoomDeltaPx * factor * _hoverPresence);
   }
 
-  Widget _buildCloseToTrayButton() {
-    return Tooltip(
-      message: _settings.minimizeToTrayOnClose ? 'Свернуть в трей' : 'Закрыть RocketDock',
-      child: GestureDetector(
-        onTap: () async {
-          _playSound();
-          if (_settings.minimizeToTrayOnClose) {
-            await _hideToTray();
-          } else {
-            await _exitApplication();
-          }
-        },
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF5F57),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.black26, width: 0.7),
-            ),
-            child: const Icon(Icons.close, size: 8, color: Colors.black54),
-          ),
-        ),
-      ),
-    );
-  }
-
   void _launchQuickSlot(int slotZeroBased) {
   if (!_settings.altNumberQuickLaunch) return;
   final launchable = _getFilteredItems()
@@ -2235,11 +2206,6 @@ class _DockScreenState extends State<DockScreen>
                                               ],
                                             ),
                                     ),
-                                    Positioned(
-                                      top: 5,
-                                      right: 6,
-                                      child: _buildCloseToTrayButton(),
-                                    ),
                                   ],
                                 );
                               },
@@ -2260,7 +2226,7 @@ class _DockScreenState extends State<DockScreen>
 
   Widget _buildRowOrCol(List<DockItemData> rowItems, {required int rowIdx, required bool isVertical}) {
     const double itemSpacing = 6.0;
-    const double sepThickness = 12.0;
+    const double sepThickness = 14.0; // 2px line + 2*6px padding, must match the separator widget
     final double restPitch = _settings.baseIconSize + itemSpacing;
     final double rowBandHeight = _settings.baseIconSize + 14.0;
     final double rowCenterY = 8.0 + rowIdx * (rowBandHeight + 6.0) + rowBandHeight * 0.5;
@@ -2524,9 +2490,15 @@ class _DockScreenState extends State<DockScreen>
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOutCubic,
+            // Dock items carry 9px (gap + running dot + padding) below the icon: lift the line so its centre matches the icons' centre
             padding: isVertical
                 ? EdgeInsets.symmetric(vertical: isDropTarget ? 12 : 6, horizontal: 4)
-                : EdgeInsets.symmetric(horizontal: isDropTarget ? 13 : 6, vertical: 3),
+                : EdgeInsets.fromLTRB(
+                    isDropTarget ? 13 : 6,
+                    3,
+                    isDropTarget ? 13 : 6,
+                    (_settings.baseIconSize - sepLen) / 2 + 9.0,
+                  ),
             decoration: isDropTarget
                 ? BoxDecoration(
                     gradient: LinearGradient(

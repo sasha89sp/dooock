@@ -1,7 +1,7 @@
 name: roket_dok
 description: "рокет док — портативная панель запуска в стиле RocketDock 1.3.5 для Windows: иконки с прозрачностью (PNG, до 256 px), 2D-зум по наведению, импорт Settings.ini и Win32 FFI телеметрия."
 publish_to: 'none'
-version: 2.7.0+1
+version: 2.7.1+1
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
