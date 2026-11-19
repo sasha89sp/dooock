@@ -311,6 +311,102 @@ typedef _PeekMessageWDart = int Function(
 typedef _GetAsyncKeyStateNative = Int16 Function(Int32 vKey);
 typedef _GetAsyncKeyStateDart = int Function(int vKey);
 
+final class _Point extends Struct {
+  @Int32()
+  external int x;
+  @Int32()
+  external int y;
+}
+
+typedef _CreatePopupMenuNative = IntPtr Function();
+typedef _CreatePopupMenuDart = int Function();
+
+typedef _AppendMenuWNative = Int32 Function(
+  IntPtr hMenu,
+  Uint32 uFlags,
+  IntPtr uIDNewItem,
+  Pointer<Utf16> lpNewItem,
+);
+typedef _AppendMenuWDart = int Function(
+  int hMenu,
+  int uFlags,
+  int uIDNewItem,
+  Pointer<Utf16> lpNewItem,
+);
+
+typedef _TrackPopupMenuExNative = Int32 Function(
+  IntPtr hMenu,
+  Uint32 uFlags,
+  Int32 x,
+  Int32 y,
+  IntPtr hWnd,
+  Pointer<Void> lptpm,
+);
+typedef _TrackPopupMenuExDart = int Function(
+  int hMenu,
+  int uFlags,
+  int x,
+  int y,
+  int hWnd,
+  Pointer<Void> lptpm,
+);
+
+typedef _DestroyMenuNative = Int32 Function(IntPtr hMenu);
+typedef _DestroyMenuDart = int Function(int hMenu);
+
+typedef _PostMessageWNative = Int32 Function(
+  IntPtr hWnd,
+  Uint32 msg,
+  IntPtr wParam,
+  IntPtr lParam,
+);
+typedef _PostMessageWDart = int Function(
+  int hWnd,
+  int msg,
+  int wParam,
+  int lParam,
+);
+
+typedef _GetCursorPosNative = Int32 Function(Pointer<_Point> lpPoint);
+typedef _GetCursorPosDart = int Function(Pointer<_Point> lpPoint);
+
+typedef _IsWindowNative = Int32 Function(IntPtr hwnd);
+typedef _IsWindowDart = int Function(int hwnd);
+
+typedef _LoadLibraryWNative = IntPtr Function(Pointer<Utf16> lpLibFileName);
+typedef _LoadLibraryWDart = int Function(Pointer<Utf16> lpLibFileName);
+
+typedef _GetProcAddressNative = Pointer<Void> Function(
+  IntPtr hModule,
+  Pointer<Void> lpProcName,
+);
+typedef _GetProcAddressDart = Pointer<Void> Function(
+  int hModule,
+  Pointer<Void> lpProcName,
+);
+
+class NativeMenuEntry {
+  final String value;
+  final String label;
+  final bool checked;
+  final bool enabled;
+  final bool isSeparator;
+
+  const NativeMenuEntry({
+    required this.value,
+    required this.label,
+    this.checked = false,
+    this.enabled = true,
+  }) : isSeparator = false;
+
+  const NativeMenuEntry.separator()
+      : value = '',
+        label = '',
+        checked = false,
+        enabled = true,
+        isSeparator = true;
+}
+
 class WindowsIntegration {
   static const String _runRegKey = r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run';
   static const String _appRegName = 'RocketDockPortable';
@@ -352,6 +448,19 @@ class WindowsIntegration {
   static _PeekMessageWDart? _peekMessageW;
   static _GetAsyncKeyStateDart? _getAsyncKeyState;
   static DateTime _lastGlobalHotkeyFire = DateTime.fromMillisecondsSinceEpoch(0);
+  static _CreatePopupMenuDart? _createPopupMenu;
+  static _AppendMenuWDart? _appendMenuW;
+  static _TrackPopupMenuExDart? _trackPopupMenuEx;
+  static _DestroyMenuDart? _destroyMenu;
+  static _PostMessageWDart? _postMessageW;
+  static _GetCursorPosDart? _getCursorPos;
+  static _IsWindowDart? _isWindow;
+  static _LoadLibraryWDart? _loadLibraryW;
+  static _GetProcAddressDart? _getProcAddress;
+  static bool _isContextMenuOpen = false;
+  static bool _darkMenusInitialized = false;
+  static int _selfHwnd = 0;
+  static int _selfHwndFallback = 0;
 
   static int windowScanCount = 0;
   static int lastWindowScanMicros = 0;
@@ -412,6 +521,13 @@ class WindowsIntegration {
         _unregisterHotKey = _user32!.lookupFunction<_UnregisterHotKeyNative, _UnregisterHotKeyDart>('UnregisterHotKey');
         _peekMessageW = _user32!.lookupFunction<_PeekMessageWNative, _PeekMessageWDart>('PeekMessageW');
         _getAsyncKeyState = _user32!.lookupFunction<_GetAsyncKeyStateNative, _GetAsyncKeyStateDart>('GetAsyncKeyState');
+        _createPopupMenu = _user32!.lookupFunction<_CreatePopupMenuNative, _CreatePopupMenuDart>('CreatePopupMenu');
+        _appendMenuW = _user32!.lookupFunction<_AppendMenuWNative, _AppendMenuWDart>('AppendMenuW');
+        _trackPopupMenuEx = _user32!.lookupFunction<_TrackPopupMenuExNative, _TrackPopupMenuExDart>('TrackPopupMenuEx');
+        _destroyMenu = _user32!.lookupFunction<_DestroyMenuNative, _DestroyMenuDart>('DestroyMenu');
+        _postMessageW = _user32!.lookupFunction<_PostMessageWNative, _PostMessageWDart>('PostMessageW');
+        _getCursorPos = _user32!.lookupFunction<_GetCursorPosNative, _GetCursorPosDart>('GetCursorPos');
+        _isWindow = _user32!.lookupFunction<_IsWindowNative, _IsWindowDart>('IsWindow');
       } catch (_) {}
       try {
         final winmm = DynamicLibrary.open('winmm.dll');
@@ -427,6 +543,10 @@ class WindowsIntegration {
       _openProcess = _kernel32!.lookupFunction<_OpenProcessNative, _OpenProcessDart>('OpenProcess');
       _queryFullProcessImageNameW = _kernel32!.lookupFunction<_QueryFullProcessImageNameWNative, _QueryFullProcessImageNameWDart>('QueryFullProcessImageNameW');
       _closeHandle = _kernel32!.lookupFunction<_CloseHandleNative, _CloseHandleDart>('CloseHandle');
+      try {
+        _loadLibraryW = _kernel32!.lookupFunction<_LoadLibraryWNative, _LoadLibraryWDart>('LoadLibraryW');
+        _getProcAddress = _kernel32!.lookupFunction<_GetProcAddressNative, _GetProcAddressDart>('GetProcAddress');
+      } catch (_) {}
       try {
         _getCurrentProcess = _kernel32!.lookupFunction<_GetCurrentProcessNative, _GetCurrentProcessDart>('GetCurrentProcess');
         _setProcessWorkingSetSize = _kernel32!.lookupFunction<_SetProcessWorkingSetSizeNative, _SetProcessWorkingSetSizeDart>('SetProcessWorkingSetSize');
@@ -1095,4 +1215,181 @@ class WindowsIntegration {
     return out.takeBytes();
   }
 
+
+  static int _findOwnWindowCallback(int hwnd, int lParam) {
+    if (_isWindowVisible == null || _getWindowThreadProcessId == null) return 1;
+    if (_isWindowVisible!(hwnd) == 0) return 1;
+
+    final pidPtr = calloc<Uint32>();
+    try {
+      _getWindowThreadProcessId!(hwnd, pidPtr);
+      if (pidPtr.value != pid) return 1;
+    } finally {
+      calloc.free(pidPtr);
+    }
+
+    if (_selfHwndFallback == 0) {
+      _selfHwndFallback = hwnd;
+    }
+
+    if (_getClassNameW != null) {
+      final buf = calloc<Uint16>(64);
+      try {
+        final len = _getClassNameW!(hwnd, buf.cast<Utf16>(), 64);
+        if (len > 0) {
+          final cls = buf.cast<Utf16>().toDartString(length: len);
+          if (cls == 'FLUTTER_RUNNER_WIN32_WINDOW') {
+            _selfHwnd = hwnd;
+            return 0; // stop enumeration
+          }
+        }
+      } finally {
+        calloc.free(buf);
+      }
+    }
+    return 1;
+  }
+
+  static int _resolveOwnWindowHwnd() {
+    if (_selfHwnd != 0 && _isWindow != null && _isWindow!(_selfHwnd) != 0) {
+      return _selfHwnd;
+    }
+    _selfHwnd = 0;
+    _selfHwndFallback = 0;
+    if (_enumWindows != null) {
+      final cb = Pointer.fromFunction<_EnumWindowsProcNative>(_findOwnWindowCallback, 0);
+      _enumWindows!(cb, 0);
+    }
+    if (_selfHwnd != 0) return _selfHwnd;
+    if (_selfHwndFallback != 0) {
+      _selfHwnd = _selfHwndFallback;
+      return _selfHwnd;
+    }
+    return _getForegroundWindow?.call() ?? 0;
+  }
+
+  static void _enableDarkMenus({bool forceDark = true}) {
+    if (_darkMenusInitialized) return;
+    _darkMenusInitialized = true;
+    if (_loadLibraryW == null || _getProcAddress == null) return;
+    try {
+      final libName = 'uxtheme.dll'.toNativeUtf16();
+      int hUxTheme = 0;
+      try {
+        hUxTheme = _loadLibraryW!(libName);
+      } finally {
+        calloc.free(libName);
+      }
+      if (hUxTheme == 0) return;
+
+      // Ordinal 135: SetPreferredAppMode (1 = AllowDark, 2 = ForceDark)
+      final setModePtr = _getProcAddress!(hUxTheme, Pointer.fromAddress(135));
+      if (setModePtr != nullptr) {
+        final setPreferredAppMode = setModePtr
+            .cast<NativeFunction<Int32 Function(Int32)>>()
+            .asFunction<int Function(int)>();
+        setPreferredAppMode(forceDark ? 2 : 1);
+      }
+
+      // Ordinal 136: FlushMenuThemes
+      final flushPtr = _getProcAddress!(hUxTheme, Pointer.fromAddress(136));
+      if (flushPtr != nullptr) {
+        final flushMenuThemes = flushPtr
+            .cast<NativeFunction<Void Function()>>()
+            .asFunction<void Function()>();
+        flushMenuThemes();
+      }
+    } catch (_) {}
+  }
+
+  /// Shows a native Win32 popup menu at the current cursor position.
+  /// Displays all items without scrolling and automatically dismisses on outside click or Esc.
+  static String? showNativeContextMenu(List<NativeMenuEntry> entries) {
+    if (!Platform.isWindows || entries.isEmpty || _isContextMenuOpen) return null;
+    if (!_ensureFfi()) return null;
+    if (_createPopupMenu == null ||
+        _appendMenuW == null ||
+        _trackPopupMenuEx == null ||
+        _destroyMenu == null ||
+        _getCursorPos == null ||
+        _setForegroundWindow == null ||
+        _postMessageW == null) {
+      return null;
+    }
+
+    final hwnd = _resolveOwnWindowHwnd();
+    if (hwnd == 0) return null;
+
+    _enableDarkMenus(forceDark: true);
+    _isContextMenuOpen = true;
+
+    const int mfString = 0x00000000;
+    const int mfGrayed = 0x00000001;
+    const int mfChecked = 0x00000008;
+    const int mfSeparator = 0x00000800;
+
+    const int tpmLeftAlign = 0x0000;
+    const int tpmTopAlign = 0x0000;
+    const int tpmRightButton = 0x0002;
+    const int tpmNoNotify = 0x0080;
+    const int tpmReturnCmd = 0x0100;
+    const int wmNull = 0x0000;
+
+    final hMenu = _createPopupMenu!();
+    if (hMenu == 0) {
+      _isContextMenuOpen = false;
+      return null;
+    }
+
+    final idToValue = <int, String>{};
+    int nextId = 1;
+    final pt = calloc<_Point>();
+
+    try {
+      for (final entry in entries) {
+        if (entry.isSeparator) {
+          _appendMenuW!(hMenu, mfSeparator, 0, nullptr);
+        } else {
+          final id = nextId++;
+          idToValue[id] = entry.value;
+          int flags = mfString;
+          if (entry.checked) flags |= mfChecked;
+          if (!entry.enabled) flags |= mfGrayed;
+
+          final labelPtr = entry.label.toNativeUtf16();
+          try {
+            _appendMenuW!(hMenu, flags, id, labelPtr);
+          } finally {
+            calloc.free(labelPtr);
+          }
+        }
+      }
+
+      _getCursorPos!(pt);
+
+      // Required by Win32 so outside clicks dismiss the menu automatically
+      _setForegroundWindow!(hwnd);
+
+      final selectedId = _trackPopupMenuEx!(
+        hMenu,
+        tpmLeftAlign | tpmTopAlign | tpmRightButton | tpmNoNotify | tpmReturnCmd,
+        pt.ref.x,
+        pt.ref.y,
+        hwnd,
+        nullptr,
+      );
+
+      // Microsoft KB Q135788: ensures subsequent right-clicks open immediately
+      _postMessageW!(hwnd, wmNull, 0, 0);
+
+      if (selectedId > 0) {
+        return idToValue[selectedId];
+      }
+      return null;
+    } finally {
+      calloc.free(pt);
+      _destroyMenu!(hMenu);
+      _isContextMenuOpen = false;
+    }
+  }
 }

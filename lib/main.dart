@@ -1390,7 +1390,69 @@ class _DockScreenState extends State<DockScreen>
   }
 
   void _showDockContextMenu(Offset globalPosition, {int? itemIndex}) {
+    _autoHideTimer?.cancel();
     final DockItemData? item = (itemIndex != null && itemIndex >= 0 && itemIndex < items.length) ? items[itemIndex] : null;
+
+    if (Platform.isWindows) {
+      final entries = <NativeMenuEntry>[
+        if (item != null && !item.isSeparator && item.targetPath.isNotEmpty)
+          const NativeMenuEntry(value: 'launch', label: 'Открыть'),
+        if (item != null && !item.isSeparator && item.targetPath.contains(r'\'))
+          const NativeMenuEntry(value: 'reveal', label: 'Показать в Проводнике'),
+        if (item != null && !item.isSeparator && item.targetPath.isNotEmpty)
+          const NativeMenuEntry(value: 'copy_path', label: 'Копировать путь'),
+        if (item != null && !item.isSeparator && item.workingDirectory.isNotEmpty)
+          const NativeMenuEntry(value: 'open_workdir', label: 'Открыть рабочую папку'),
+        if (item != null && !item.isSeparator)
+          const NativeMenuEntry(value: 'edit', label: 'Свойства...'),
+        if (item != null && !item.isSeparator)
+          const NativeMenuEntry(value: 'change_icon', label: 'Изменить иконку...'),
+        if (item != null && !_settings.lockIcons)
+          const NativeMenuEntry(value: 'delete', label: 'Удалить с панели'),
+        if (item != null) const NativeMenuEntry.separator(),
+        if (!_settings.lockIcons) ...[
+          const NativeMenuEntry(value: 'add_file', label: 'Добавить файл...'),
+          const NativeMenuEntry(value: 'add_folder', label: 'Добавить папку...'),
+          const NativeMenuEntry(value: 'add_sep', label: 'Добавить разделитель'),
+          const NativeMenuEntry.separator(),
+        ],
+        NativeMenuEntry(
+          value: 'lock_icons',
+          label: 'Закрепить значки',
+          checked: _settings.lockIcons,
+        ),
+        NativeMenuEntry(
+          value: 'pin_edge',
+          label: 'Закрепить к краю',
+          checked: _settings.pinToScreenEdge,
+        ),
+        NativeMenuEntry(
+          value: 'eco_mode',
+          label: 'Экономичный режим',
+          checked: _settings.ecoDesktopMode,
+        ),
+        if (_availableProfiles.isNotEmpty) ...[
+          const NativeMenuEntry.separator(),
+          for (int pIdx = 0; pIdx < _availableProfiles.length && pIdx < 5; pIdx++)
+            NativeMenuEntry(
+              value: 'profile_$pIdx',
+              label:
+                  'Профиль: ${_availableProfiles[pIdx].path.split(Platform.pathSeparator).last.replaceAll(RegExp(r'\.ini$', caseSensitive: false), '')}',
+            ),
+        ],
+        const NativeMenuEntry.separator(),
+        const NativeMenuEntry(value: 'import_ini', label: 'Импорт Settings.ini...'),
+        const NativeMenuEntry(value: 'settings', label: 'Настройки...'),
+        const NativeMenuEntry(value: 'hide_tray', label: 'Свернуть в трей'),
+        const NativeMenuEntry(value: 'exit', label: 'Выход'),
+      ];
+
+      final selected = WindowsIntegration.showNativeContextMenu(entries);
+      if (selected != null) {
+        unawaited(_handleDockContextMenuAction(selected, item: item, itemIndex: itemIndex));
+      }
+      return;
+    }
 
     PopupMenuItem<String> macItem(String value, String label, {Color textColor = Colors.white, IconData? icon}) {
       return PopupMenuItem<String>(
@@ -1487,95 +1549,99 @@ class _DockScreenState extends State<DockScreen>
       ],
     ).then((value) async {
       if (value == null) return;
-      if (value == 'launch' && item != null) {
-        _launchTargetNonBlocking(item.targetPath, itemId: item.id, displayTitle: item.title, arguments: item.arguments, workingDirectory: item.workingDirectory);
-      } else if (value == 'reveal' && item != null && Platform.isWindows) {
-        unawaited(Process.start('explorer.exe', ['/select,${item.targetPath}'], mode: ProcessStartMode.detached));
-      } else if (value == 'copy_path' && item != null) {
-        await Clipboard.setData(ClipboardData(text: item.targetPath));
-      } else if (value == 'open_workdir' && item != null && item.workingDirectory.isNotEmpty) {
-        _launchTargetNonBlocking(item.workingDirectory, displayTitle: item.title);
-      } else if (value == 'edit' && itemIndex != null) {
-        await _editItemDialog(itemIndex);
-      } else if (value == 'change_icon' && itemIndex != null) {
-        const XTypeGroup imgGroup = XTypeGroup(label: 'Изображения', extensions: ['png', 'jpg', 'jpeg', 'bmp']);
-        final XFile? img = await openFile(acceptedTypeGroups: [imgGroup]);
-        if (img != null) {
-          final file = File(img.path);
-          if (await file.exists()) {
-            _cacheImageProvider(img.path, _buildSizedFileImage(file));
-            setState(() => items[itemIndex].customIconPath = img.path);
-            await PortableStorage.save(_settings, items);
-          }
-        }
-      } else if (value == 'add_file') {
-        await _addItemDialog();
-      } else if (value == 'add_folder') {
-        await _addFolderDialog();
-      } else if (value == 'add_sep') {
-        final insertPos = itemIndex != null ? itemIndex + 1 : items.length;
-        setState(() {
-          items.insert(
-            insertPos,
-            DockItemData(id: DateTime.now().millisecondsSinceEpoch.toString(), title: 'Разделитель', iconName: '', targetPath: '', isSeparator: true),
-          );
-        });
-        await PortableStorage.save(_settings, items);
-        await _applyWindowProperties();
-      } else if (value == 'lock_icons') {
-        setState(() => _settings.lockIcons = !_settings.lockIcons);
-        await PortableStorage.save(_settings, items);
-      } else if (value == 'pin_edge') {
-        setState(() => _settings.pinToScreenEdge = !_settings.pinToScreenEdge);
-        await PortableStorage.save(_settings, items);
-        await _applyWindowProperties();
-      } else if (value == 'eco_mode') {
-        setState(() => _settings.ecoDesktopMode = !_settings.ecoDesktopMode);
-        await PortableStorage.save(_settings, items);
-        if (_settings.ecoDesktopMode) {
-          _refreshImageCache();
-        }
-        await _warmUpIconCache();
-        await _applyWindowProperties();
-        _startTimers();
-      } else if (value.startsWith('profile_')) {
-        final pIdx = int.tryParse(value.substring('profile_'.length));
-        if (pIdx != null && pIdx >= 0 && pIdx < _availableProfiles.length) {
-          final loadedProf = await PortableStorage.loadProfileFromFile(
-            _availableProfiles[pIdx].path,
-            baseSettings: _settings,
-          );
-          if (loadedProf != null && mounted) {
-            setState(() {
-              _settings = loadedProf.settings;
-              if (loadedProf.items.isNotEmpty) items = loadedProf.items;
-              _activeStackIndex = null;
-            });
-            _playSound();
-            _clearImageCache();
-            await _warmUpIconCache();
-            await PortableStorage.save(_settings, items);
-            await _applyWindowProperties();
-            _startTimers();
-          }
-        }
-      } else if (value == 'import_ini') {
-        await _importClassicRocketDockIni();
-      } else if (value == 'settings') {
-        await _openSettingsModal();
-      } else if (value == 'hide_tray') {
-        await _hideToTray();
-      } else if (value == 'delete' && itemIndex != null && items.length > 1) {
-        setState(() {
-          items.removeAt(itemIndex);
-          if (_activeStackIndex == itemIndex) _activeStackIndex = null;
-        });
-        await PortableStorage.save(_settings, items);
-        await _applyWindowProperties();
-      } else if (value == 'exit') {
-        await _exitApplication();
-      }
+      await _handleDockContextMenuAction(value, item: item, itemIndex: itemIndex);
     });
+  }
+
+  Future<void> _handleDockContextMenuAction(String value, {DockItemData? item, int? itemIndex}) async {
+    if (value == 'launch' && item != null) {
+      _launchTargetNonBlocking(item.targetPath, itemId: item.id, displayTitle: item.title, arguments: item.arguments, workingDirectory: item.workingDirectory);
+    } else if (value == 'reveal' && item != null && Platform.isWindows) {
+      unawaited(Process.start('explorer.exe', ['/select,${item.targetPath}'], mode: ProcessStartMode.detached));
+    } else if (value == 'copy_path' && item != null) {
+      await Clipboard.setData(ClipboardData(text: item.targetPath));
+    } else if (value == 'open_workdir' && item != null && item.workingDirectory.isNotEmpty) {
+      _launchTargetNonBlocking(item.workingDirectory, displayTitle: item.title);
+    } else if (value == 'edit' && itemIndex != null) {
+      await _editItemDialog(itemIndex);
+    } else if (value == 'change_icon' && itemIndex != null) {
+      const XTypeGroup imgGroup = XTypeGroup(label: 'Изображения', extensions: ['png', 'jpg', 'jpeg', 'bmp']);
+      final XFile? img = await openFile(acceptedTypeGroups: [imgGroup]);
+      if (img != null) {
+        final file = File(img.path);
+        if (await file.exists()) {
+          _cacheImageProvider(img.path, _buildSizedFileImage(file));
+          setState(() => items[itemIndex].customIconPath = img.path);
+          await PortableStorage.save(_settings, items);
+        }
+      }
+    } else if (value == 'add_file') {
+      await _addItemDialog();
+    } else if (value == 'add_folder') {
+      await _addFolderDialog();
+    } else if (value == 'add_sep') {
+      final insertPos = itemIndex != null ? itemIndex + 1 : items.length;
+      setState(() {
+        items.insert(
+          insertPos,
+          DockItemData(id: DateTime.now().millisecondsSinceEpoch.toString(), title: 'Разделитель', iconName: '', targetPath: '', isSeparator: true),
+        );
+      });
+      await PortableStorage.save(_settings, items);
+      await _applyWindowProperties();
+    } else if (value == 'lock_icons') {
+      setState(() => _settings.lockIcons = !_settings.lockIcons);
+      await PortableStorage.save(_settings, items);
+    } else if (value == 'pin_edge') {
+      setState(() => _settings.pinToScreenEdge = !_settings.pinToScreenEdge);
+      await PortableStorage.save(_settings, items);
+      await _applyWindowProperties();
+    } else if (value == 'eco_mode') {
+      setState(() => _settings.ecoDesktopMode = !_settings.ecoDesktopMode);
+      await PortableStorage.save(_settings, items);
+      if (_settings.ecoDesktopMode) {
+        _refreshImageCache();
+      }
+      await _warmUpIconCache();
+      await _applyWindowProperties();
+      _startTimers();
+    } else if (value.startsWith('profile_')) {
+      final pIdx = int.tryParse(value.substring('profile_'.length));
+      if (pIdx != null && pIdx >= 0 && pIdx < _availableProfiles.length) {
+        final loadedProf = await PortableStorage.loadProfileFromFile(
+          _availableProfiles[pIdx].path,
+          baseSettings: _settings,
+        );
+        if (loadedProf != null && mounted) {
+          setState(() {
+            _settings = loadedProf.settings;
+            if (loadedProf.items.isNotEmpty) items = loadedProf.items;
+            _activeStackIndex = null;
+          });
+          _playSound();
+          _clearImageCache();
+          await _warmUpIconCache();
+          await PortableStorage.save(_settings, items);
+          await _applyWindowProperties();
+          _startTimers();
+        }
+      }
+    } else if (value == 'import_ini') {
+      await _importClassicRocketDockIni();
+    } else if (value == 'settings') {
+      await _openSettingsModal();
+    } else if (value == 'hide_tray') {
+      await _hideToTray();
+    } else if (value == 'delete' && itemIndex != null && items.length > 1) {
+      setState(() {
+        items.removeAt(itemIndex);
+        if (_activeStackIndex == itemIndex) _activeStackIndex = null;
+      });
+      await PortableStorage.save(_settings, items);
+      await _applyWindowProperties();
+    } else if (value == 'exit') {
+      await _exitApplication();
+    }
   }
 
   /// Standard cross-platform Material icons so glyphs render cleanly without missing-glyph boxes
@@ -2181,7 +2247,7 @@ class _DockScreenState extends State<DockScreen>
                         },
                         child: GestureDetector(
                           onPanStart: _settings.pinToScreenEdge ? null : (_) => windowManager.startDragging(),
-                          onSecondaryTapDown: (d) => _showDockContextMenu(d.globalPosition),
+                          onSecondaryTapUp: (d) => _showDockContextMenu(d.globalPosition),
                           child: RepaintBoundary(
                             child: AnimatedBuilder(
                               animation: _frameTick,
@@ -2486,7 +2552,7 @@ class _DockScreenState extends State<DockScreen>
         cursor: _settings.lockIcons ? SystemMouseCursors.basic : SystemMouseCursors.grab,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onSecondaryTapDown: (d) => _showDockContextMenu(d.globalPosition, itemIndex: index),
+          onSecondaryTapUp: (d) => _showDockContextMenu(d.globalPosition, itemIndex: index),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOutCubic,
@@ -2733,7 +2799,7 @@ class _DockScreenState extends State<DockScreen>
               _launchTargetNonBlocking(item.targetPath, itemId: item.id, displayTitle: item.title, arguments: item.arguments, workingDirectory: item.workingDirectory);
             }
           },
-          onSecondaryTapDown: (details) => _showDockContextMenu(details.globalPosition, itemIndex: index),
+          onSecondaryTapUp: (details) => _showDockContextMenu(details.globalPosition, itemIndex: index),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 3.0, vertical: 2.0),
             child: Stack(
