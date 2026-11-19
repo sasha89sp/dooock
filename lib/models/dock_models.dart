@@ -61,6 +61,9 @@ class DockSettings {
   bool autoExtractExeIcons;
   int rowCount;
   bool ecoDesktopMode;
+  bool autoEcoOnBattery;
+  bool autoPauseOnFullscreen;
+  bool altNumberQuickLaunch;
   bool showClockAndDesktopWidgets;
   bool showHardwareTelemetryWidgets;
   bool showExtraSystemWidgets;
@@ -113,6 +116,9 @@ class DockSettings {
     this.autoExtractExeIcons = true,
     this.rowCount = 1,
     this.ecoDesktopMode = false,
+    this.autoEcoOnBattery = true,
+    this.autoPauseOnFullscreen = true,
+    this.altNumberQuickLaunch = true,
     this.showClockAndDesktopWidgets = true,
     this.showHardwareTelemetryWidgets = true,
     this.showExtraSystemWidgets = true,
@@ -179,6 +185,9 @@ class DockSettings {
         'autoExtractExeIcons': autoExtractExeIcons,
         'rowCount': rowCount,
         'ecoDesktopMode': ecoDesktopMode,
+        'autoEcoOnBattery': autoEcoOnBattery,
+        'autoPauseOnFullscreen': autoPauseOnFullscreen,
+        'altNumberQuickLaunch': altNumberQuickLaunch,
         'showClockAndDesktopWidgets': showClockAndDesktopWidgets,
         'showHardwareTelemetryWidgets': showHardwareTelemetryWidgets,
         'showExtraSystemWidgets': showExtraSystemWidgets,
@@ -242,6 +251,9 @@ class DockSettings {
       autoExtractExeIcons: m['autoExtractExeIcons'] as bool? ?? true,
       rowCount: ((m['rowCount'] as num?)?.toInt() ?? 1).clamp(1, 3),
       ecoDesktopMode: m['ecoDesktopMode'] as bool? ?? false,
+      autoEcoOnBattery: m['autoEcoOnBattery'] as bool? ?? true,
+      autoPauseOnFullscreen: m['autoPauseOnFullscreen'] as bool? ?? true,
+      altNumberQuickLaunch: m['altNumberQuickLaunch'] as bool? ?? true,
       showClockAndDesktopWidgets: m['showClockAndDesktopWidgets'] as bool? ?? true,
       showHardwareTelemetryWidgets: m['showHardwareTelemetryWidgets'] as bool? ?? true,
       showExtraSystemWidgets: m['showExtraSystemWidgets'] as bool? ?? true,

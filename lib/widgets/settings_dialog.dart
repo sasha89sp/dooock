@@ -641,6 +641,24 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
             subtitle: 'Отключает фоновые таймеры и опрос окон; анимация и кнопки питания сохраняются',
           ),
           _macSwitchRow(
+            'Авто-экономичный режим при работе от батареи',
+            _draft.autoEcoOnBattery,
+            (v) => setState(() => _draft.autoEcoOnBattery = v),
+            subtitle: 'Автоматически экономит заряд ноутбука при отключении сети',
+          ),
+          _macSwitchRow(
+            'Замораживать панель при полноэкранных играх и видео',
+            _draft.autoPauseOnFullscreen,
+            (v) => setState(() => _draft.autoPauseOnFullscreen = v),
+            subtitle: 'Приостанавливает фоновые опросы, когда активное окно развёрнуто на весь экран',
+          ),
+          _macSwitchRow(
+            'Быстрый запуск значков по Alt + 1..9',
+            _draft.altNumberQuickLaunch,
+            (v) => setState(() => _draft.altNumberQuickLaunch = v),
+            subtitle: 'Запускает 1–9 закреплённые программы с клавиатуры',
+          ),
+          _macSwitchRow(
             'Показывать виджеты «Часы» и «Рабочие столы»',
             _draft.showClockAndDesktopWidgets,
             (v) => setState(() => _draft.showClockAndDesktopWidgets = v),
@@ -765,10 +783,12 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
         _macGroupCard([
           _macDropdownRow<int>(
             'Монитор',
-            _draft.monitorIndex,
+            _draft.monitorIndex.clamp(0, 3),
             const [
               DropdownMenuItem(value: 0, child: Text('Монитор 1 (Основной)')),
               DropdownMenuItem(value: 1, child: Text('Монитор 2')),
+              DropdownMenuItem(value: 2, child: Text('Монитор 3')),
+              DropdownMenuItem(value: 3, child: Text('Монитор 4')),
             ],
             (v) => setState(() => _draft.monitorIndex = v ?? 0),
           ),
@@ -1073,7 +1093,7 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
                     children: [
                       Text('RocketDock Portable macOS Edition', style: TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700)),
                       SizedBox(height: 3),
-                      Text('Версия 2.4.7 • Win32 FFI Eco Engine', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
+                      Text('Версия 2.4.8 • Win32 FFI Multi-Monitor Eco Engine', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
                       SizedBox(height: 3),
                       Text('Чёткие иконки • 2D-наведение по рядам • Импорт Settings.ini', style: TextStyle(color: Colors.white60, fontSize: 11.5)),
                     ],

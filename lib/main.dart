@@ -43,6 +43,34 @@ void main() async {
 class RocketDockApp extends StatelessWidget {
   const RocketDockApp({super.key});
 
+  void _launchQuickSlot(int slotZeroBased) {
+    if (!_settings.altNumberQuickLaunch) return;
+    final launchable = _getFilteredItems()
+        .where((it) => !it.isSeparator && !it.isHardwareWidget && !it.isWidgetPlugin && !it.isPowerAction)
+        .toList();
+    if (slotZeroBased < 0 || slotZeroBased >= launchable.length) return;
+    final targetItem = launchable[slotZeroBased];
+    final realIdx = items.indexOf(targetItem);
+    if (realIdx != -1) {
+      _triggerClickEffect(realIdx);
+    }
+    if (targetItem.iconName == 'settings') {
+      _playSound();
+      _openSettingsModal();
+    } else if (targetItem.isFolderStack && realIdx != -1) {
+      _playSound();
+      _openFolderStack(realIdx);
+    } else if (targetItem.targetPath.isNotEmpty) {
+      _launchTargetNonBlocking(
+        targetItem.targetPath,
+        itemId: targetItem.id,
+        displayTitle: targetItem.title,
+        arguments: targetItem.arguments,
+        workingDirectory: targetItem.workingDirectory,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -93,8 +121,13 @@ class _DockScreenState extends State<DockScreen>
 
   static const int _maxCachedIcons = 48;
 
+  bool get _isEffectiveEcoMode =>
+      _settings.ecoDesktopMode ||
+      (_settings.autoEcoOnBattery && _isOnBatteryPower) ||
+      (_settings.autoPauseOnFullscreen && _isFullscreenAppActive);
+
   int get _targetIconDecodePx {
-    if (_settings.ecoDesktopMode) {
+    if (_isEffectiveEcoMode) {
       return _settings.baseIconSize.round().clamp(32, 96);
     }
     final maxIcon = _settings.baseIconSize +
@@ -158,6 +191,9 @@ class _DockScreenState extends State<DockScreen>
   bool _sortStackByFolderFirst = true;
   String _toggleHotkeyLabel = 'Control+Alt+R';
   String _lastImportDebugLog = '';
+  bool _isOnBatteryPower = false;
+  bool _isFullscreenAppActive = false;
+  List<File> _availableProfiles = [];
 
   Timer? _clockTimer;
   Timer? _telemetryTimer;
@@ -178,7 +214,8 @@ class _DockScreenState extends State<DockScreen>
   String _buildDiagnosticsSummary() {
     final mem = WindowsIntegration.getProcessMemoryInfo();
     final buf = StringBuffer();
-    buf.writeln('Режим: ${_settings.ecoDesktopMode ? "Экономичный (только иконки)" : "Стандартный"}');
+    buf.writeln('Режим: ${_isEffectiveEcoMode ? "Экономичный${_settings.ecoDesktopMode ? " (вручную)" : (_isFullscreenAppActive ? " (авто: полный экран)" : " (авто: батарея)")}" : "Стандартный"}');
+    buf.writeln('Монитор: #${_settings.monitorIndex + 1} (всего: ${WindowsIntegration.getMonitorCount()})');
     buf.writeln('Положение: ${_settings.layering.name} (${_settings.screenEdge.name})');
     if (mem.workingSetMb > 0) {
       buf.writeln('Память (Working Set): ${mem.workingSetMb.toStringAsFixed(1)} МБ | Private: ${mem.privateBytesMb.toStringAsFixed(1)} МБ');
@@ -334,12 +371,12 @@ class _DockScreenState extends State<DockScreen>
   }
 
   bool get _hasActiveClockWidget =>
-      !_settings.ecoDesktopMode &&
+      !_isEffectiveEcoMode &&
       _settings.showClockAndDesktopWidgets &&
       items.any((it) => it.isWidgetPlugin && it.widgetType == 'clock');
 
   bool get _hasActiveHardwareWidgets =>
-      !_settings.ecoDesktopMode &&
+      !_isEffectiveEcoMode &&
       (_settings.showHardwareTelemetryWidgets || _settings.showExtraSystemWidgets) &&
       items.any((it) => it.isHardwareWidget);
 
@@ -356,7 +393,10 @@ class _DockScreenState extends State<DockScreen>
       _updateClock();
       _clockTimer = Timer.periodic(const Duration(seconds: 15), (_) => _updateClock());
     }
-    if (_hasActiveHardwareWidgets || (!_settings.ecoDesktopMode && _settings.indicateRunningApps)) {
+    if (_hasActiveHardwareWidgets ||
+        (!_isEffectiveEcoMode && _settings.indicateRunningApps) ||
+        _settings.autoEcoOnBattery ||
+        _settings.autoPauseOnFullscreen) {
       _pollNativeFfiTelemetry();
       _telemetryTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollNativeFfiTelemetry());
     }
@@ -374,6 +414,33 @@ class _DockScreenState extends State<DockScreen>
   Future<void> _pollNativeFfiTelemetry() async {
     if (!Platform.isWindows || !mounted || _isAutoHidden) return;
 
+    final prevEco = _isEffectiveEcoMode;
+    if (_settings.autoEcoOnBattery) {
+      _isOnBatteryPower = !NativeHardwareTelemetry.isOnAcPower();
+    } else {
+      _isOnBatteryPower = false;
+    }
+    if (_settings.autoPauseOnFullscreen) {
+      _isFullscreenAppActive = WindowsIntegration.isForegroundAppFullscreen();
+    } else {
+      _isFullscreenAppActive = false;
+    }
+    if (prevEco != _isEffectiveEcoMode) {
+      if (_isEffectiveEcoMode) {
+        _clockTimer?.cancel();
+        _clockTimer = null;
+        _clearImageCache();
+        WindowsIntegration.trimProcessWorkingSet();
+      } else {
+        await _warmUpIconCache();
+        if (_hasActiveClockWidget && (_clockTimer == null || !_clockTimer!.isActive)) {
+          _updateClock();
+          _clockTimer = Timer.periodic(const Duration(seconds: 15), (_) => _updateClock());
+        }
+      }
+      if (mounted) _frameTick.value++;
+    }
+
     if (_hasActiveHardwareWidgets) {
       final ram = NativeHardwareTelemetry.getRamUsagePercent();
       final cpu = NativeHardwareTelemetry.getCpuUsagePercent();
@@ -387,7 +454,7 @@ class _DockScreenState extends State<DockScreen>
       }
     }
 
-    if (!_settings.ecoDesktopMode && _settings.indicateRunningApps) {
+    if (!_isEffectiveEcoMode && _settings.indicateRunningApps) {
       final running = WindowsIntegration.scanVisibleRunningApps();
       bool changed = false;
       for (final item in items) {
@@ -557,13 +624,14 @@ class _DockScreenState extends State<DockScreen>
     } else {
       await PortableStorage.save(_settings, items);
     }
+    _availableProfiles = await PortableStorage.listSavedProfiles();
     await _warmUpIconCache();
     await _applyWindowProperties();
     _startTimers();
   }
 
   Future<void> _extractMissingIconsInBackground() async {
-    if (!Platform.isWindows || !_settings.autoExtractExeIcons || _settings.ecoDesktopMode) return;
+    if (!Platform.isWindows || !_settings.autoExtractExeIcons) return;
     for (int i = 0; i < items.length; i++) {
       if (!mounted) return;
       final item = items[i];
@@ -616,6 +684,7 @@ class _DockScreenState extends State<DockScreen>
     final stamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
     final profilePath = '${PortableStorage.profilesDir.path}${Platform.pathSeparator}Profile_$stamp.ini';
     final ok = await PortableStorage.exportProfileIni(profilePath, _settings, items);
+    _availableProfiles = await PortableStorage.listSavedProfiles();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -729,7 +798,7 @@ class _DockScreenState extends State<DockScreen>
 
   List<DockItemData> _getFilteredItems({String queryLower = ''}) {
     return items.where((it) {
-      if (_settings.ecoDesktopMode && (it.isWidgetPlugin || it.isHardwareWidget)) {
+      if (_isEffectiveEcoMode && (it.isWidgetPlugin || it.isHardwareWidget)) {
         return false;
       }
       if (!_settings.showClockAndDesktopWidgets && it.isWidgetPlugin) {
@@ -780,7 +849,16 @@ class _DockScreenState extends State<DockScreen>
         size = Size(dockThickness, perRowSpan.clamp(560.0, 960.0));
       }
       await windowManager.setSize(size);
-      await windowManager.setAlignment(align);
+      final mon = WindowsIntegration.getMonitorWorkArea(_settings.monitorIndex);
+      if (mon != null) {
+        final double normX = (align.x + 1.0) * 0.5;
+        final double normY = (align.y + 1.0) * 0.5;
+        final double targetLeft = mon.left + (mon.width - size.width) * normX;
+        final double targetTop = mon.top + (mon.height - size.height) * normY;
+        await windowManager.setPosition(Offset(targetLeft, targetTop));
+      } else {
+        await windowManager.setAlignment(align);
+      }
     } catch (_) {}
   }
 
@@ -914,8 +992,8 @@ class _DockScreenState extends State<DockScreen>
     await PortableStorage.save(_settings, items);
     await _applyWindowProperties();
 
-    if (!isDir && !_settings.ecoDesktopMode) {
-      final extractedIcon = await WindowsIntegration.extractJumboIcon(path, enabled: _settings.autoExtractExeIcons);
+    if (!isDir) {
+      final extractedIcon = _isEffectiveEcoMode ? WindowsIntegration.extractNativeIconBmp(path) : await WindowsIntegration.extractJumboIcon(path, enabled: _settings.autoExtractExeIcons);
       if (extractedIcon != null && mounted) {
         final file = File(extractedIcon);
         if (await file.exists()) {
@@ -1219,6 +1297,16 @@ class _DockScreenState extends State<DockScreen>
           textColor: _settings.ecoDesktopMode ? const Color(0xFF30D158) : Colors.white,
           icon: Icons.eco_rounded,
         ),
+        if (_availableProfiles.isNotEmpty) ...[
+          macDivider(),
+          for (int pIdx = 0; pIdx < _availableProfiles.length && pIdx < 5; pIdx++)
+            macItem(
+              'profile_$pIdx',
+              'Профиль: ${_availableProfiles[pIdx].path.split(Platform.pathSeparator).last.replaceAll(RegExp(r'\.ini$', caseSensitive: false), '')}',
+              textColor: const Color(0xFF64D2FF),
+              icon: Icons.layers_rounded,
+            ),
+        ],
         macDivider(),
         macItem('import_ini', 'Импорт Settings.ini...', icon: Icons.file_open_rounded),
         macItem('settings', 'Настройки...', icon: Icons.settings_rounded),
@@ -1274,6 +1362,27 @@ class _DockScreenState extends State<DockScreen>
         await _warmUpIconCache();
         await _applyWindowProperties();
         _startTimers();
+      } else if (value.startsWith('profile_')) {
+        final pIdx = int.tryParse(value.substring('profile_'.length));
+        if (pIdx != null && pIdx >= 0 && pIdx < _availableProfiles.length) {
+          final loadedProf = await PortableStorage.loadProfileFromFile(
+            _availableProfiles[pIdx].path,
+            baseSettings: _settings,
+          );
+          if (loadedProf != null && mounted) {
+            setState(() {
+              _settings = loadedProf.settings;
+              if (loadedProf.items.isNotEmpty) items = loadedProf.items;
+              _activeStackIndex = null;
+            });
+            _playSound();
+            _clearImageCache();
+            await _warmUpIconCache();
+            await PortableStorage.save(_settings, items);
+            await _applyWindowProperties();
+            _startTimers();
+          }
+        }
       } else if (value == 'import_ini') {
         await _importClassicRocketDockIni();
       } else if (value == 'settings') {
@@ -1607,6 +1716,15 @@ class _DockScreenState extends State<DockScreen>
             await _restoreFromTray();
           }
         },
+        const SingleActivator(LogicalKeyboardKey.digit1, alt: true): () => _launchQuickSlot(0),
+        const SingleActivator(LogicalKeyboardKey.digit2, alt: true): () => _launchQuickSlot(1),
+        const SingleActivator(LogicalKeyboardKey.digit3, alt: true): () => _launchQuickSlot(2),
+        const SingleActivator(LogicalKeyboardKey.digit4, alt: true): () => _launchQuickSlot(3),
+        const SingleActivator(LogicalKeyboardKey.digit5, alt: true): () => _launchQuickSlot(4),
+        const SingleActivator(LogicalKeyboardKey.digit6, alt: true): () => _launchQuickSlot(5),
+        const SingleActivator(LogicalKeyboardKey.digit7, alt: true): () => _launchQuickSlot(6),
+        const SingleActivator(LogicalKeyboardKey.digit8, alt: true): () => _launchQuickSlot(7),
+        const SingleActivator(LogicalKeyboardKey.digit9, alt: true): () => _launchQuickSlot(8),
       },
       child: Focus(
         autofocus: true,

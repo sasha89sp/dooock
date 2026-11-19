@@ -118,6 +118,130 @@ typedef _GetProcessMemoryInfoDart = int Function(
   int cb,
 );
 
+final class _Rect extends Struct {
+  @Int32()
+  external int left;
+  @Int32()
+  external int top;
+  @Int32()
+  external int right;
+  @Int32()
+  external int bottom;
+}
+
+final class _MonitorInfo extends Struct {
+  @Uint32()
+  external int cbSize;
+  external _Rect rcMonitor;
+  external _Rect rcWork;
+  @Uint32()
+  external int dwFlags;
+}
+
+final class _ShFileInfoW extends Struct {
+  @IntPtr()
+  external int hIcon;
+  @Int32()
+  external int iIcon;
+  @Uint32()
+  external int dwAttributes;
+  @Array(260)
+  external Array<Uint16> szDisplayName;
+  @Array(80)
+  external Array<Uint16> szTypeName;
+}
+
+final class _IconInfo extends Struct {
+  @Int32()
+  external int fIcon;
+  @Uint32()
+  external int xHotspot;
+  @Uint32()
+  external int yHotspot;
+  @IntPtr()
+  external int hbmMask;
+  @IntPtr()
+  external int hbmColor;
+}
+
+final class _Bitmap extends Struct {
+  @Int32()
+  external int bmType;
+  @Int32()
+  external int bmWidth;
+  @Int32()
+  external int bmHeight;
+  @Int32()
+  external int bmWidthBytes;
+  @Uint16()
+  external int bmPlanes;
+  @Uint16()
+  external int bmBitsPixel;
+  external Pointer<Void> bmBits;
+}
+
+final class _BitmapInfoHeader extends Struct {
+  @Uint32()
+  external int biSize;
+  @Int32()
+  external int biWidth;
+  @Int32()
+  external int biHeight;
+  @Uint16()
+  external int biPlanes;
+  @Uint16()
+  external int biBitCount;
+  @Uint32()
+  external int biCompression;
+  @Uint32()
+  external int biSizeImage;
+  @Int32()
+  external int biXPelsPerMeter;
+  @Int32()
+  external int biYPelsPerMeter;
+  @Uint32()
+  external int biClrUsed;
+  @Uint32()
+  external int biClrImportant;
+}
+
+typedef _MonitorEnumProcNative = Int32 Function(IntPtr hMonitor, IntPtr hdcMonitor, Pointer<_Rect> lprcMonitor, IntPtr dwData);
+typedef _EnumDisplayMonitorsNative = Int32 Function(IntPtr hdc, Pointer<_Rect> lprcClip, Pointer<NativeFunction<_MonitorEnumProcNative>> lpfnEnum, IntPtr dwData);
+typedef _EnumDisplayMonitorsDart = int Function(int hdc, Pointer<_Rect> lprcClip, Pointer<NativeFunction<_MonitorEnumProcNative>> lpfnEnum, int dwData);
+
+typedef _GetMonitorInfoWNative = Int32 Function(IntPtr hMonitor, Pointer<_MonitorInfo> lpmi);
+typedef _GetMonitorInfoWDart = int Function(int hMonitor, Pointer<_MonitorInfo> lpmi);
+
+typedef _GetForegroundWindowNative = IntPtr Function();
+typedef _GetForegroundWindowDart = int Function();
+
+typedef _GetWindowRectNative = Int32 Function(IntPtr hwnd, Pointer<_Rect> lpRect);
+typedef _GetWindowRectDart = int Function(int hwnd, Pointer<_Rect> lpRect);
+
+typedef _MonitorFromWindowNative = IntPtr Function(IntPtr hwnd, Uint32 dwFlags);
+typedef _MonitorFromWindowDart = int Function(int hwnd, int dwFlags);
+
+typedef _SHGetFileInfoWNative = IntPtr Function(Pointer<Utf16> pszPath, Uint32 dwFileAttributes, Pointer<_ShFileInfoW> psfi, Uint32 cbFileInfo, Uint32 uFlags);
+typedef _SHGetFileInfoWDart = int Function(Pointer<Utf16> pszPath, int dwFileAttributes, Pointer<_ShFileInfoW> psfi, int cbFileInfo, int uFlags);
+
+typedef _GetIconInfoNative = Int32 Function(IntPtr hIcon, Pointer<_IconInfo> piconinfo);
+typedef _GetIconInfoDart = int Function(int hIcon, Pointer<_IconInfo> piconinfo);
+
+typedef _GetObjectWNative = Int32 Function(IntPtr h, Int32 c, Pointer<Void> pv);
+typedef _GetObjectWDart = int Function(int h, int c, Pointer<Void> pv);
+
+typedef _GetDCNative = IntPtr Function(IntPtr hwnd);
+typedef _GetDCDart = int Function(int hwnd);
+
+typedef _ReleaseDCNative = Int32 Function(IntPtr hwnd, IntPtr hdc);
+typedef _ReleaseDCDart = int Function(int hwnd, int hdc);
+
+typedef _GetDIBitsNative = Int32 Function(IntPtr hdc, IntPtr hbm, Uint32 start, Uint32 cLines, Pointer<Uint8> lpvBits, Pointer<_BitmapInfoHeader> lpbmi, Uint32 usage);
+typedef _GetDIBitsDart = int Function(int hdc, int hbm, int start, int cLines, Pointer<Uint8> lpvBits, Pointer<_BitmapInfoHeader> lpbmi, int usage);
+
+typedef _DeleteObjectNative = Int32 Function(IntPtr ho);
+typedef _DeleteObjectDart = int Function(int ho);
+
 class WindowsIntegration {
   static const String _runRegKey = r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run';
   static const String _appRegName = 'RocketDockPortable';
@@ -138,6 +262,18 @@ class WindowsIntegration {
   static _GetCurrentProcessDart? _getCurrentProcess;
   static _SetProcessWorkingSetSizeDart? _setProcessWorkingSetSize;
   static _GetProcessMemoryInfoDart? _getProcessMemoryInfo;
+  static _EnumDisplayMonitorsDart? _enumDisplayMonitors;
+  static _GetMonitorInfoWDart? _getMonitorInfoW;
+  static _GetForegroundWindowDart? _getForegroundWindow;
+  static _GetWindowRectDart? _getWindowRect;
+  static _MonitorFromWindowDart? _monitorFromWindow;
+  static _SHGetFileInfoWDart? _shGetFileInfoW;
+  static _GetIconInfoDart? _getIconInfo;
+  static _GetObjectWDart? _getObjectW;
+  static _GetDCDart? _getDC;
+  static _ReleaseDCDart? _releaseDC;
+  static _GetDIBitsDart? _getDIBits;
+  static _DeleteObjectDart? _deleteObject;
 
   static int windowScanCount = 0;
   static int lastWindowScanMicros = 0;
@@ -174,8 +310,25 @@ class WindowsIntegration {
       _isIconic = _user32!.lookupFunction<_IsIconicNative, _IsIconicDart>('IsIconic');
       _destroyIcon = _user32!.lookupFunction<_DestroyIconNative, _DestroyIconDart>('DestroyIcon');
       try {
+        _enumDisplayMonitors = _user32!.lookupFunction<_EnumDisplayMonitorsNative, _EnumDisplayMonitorsDart>('EnumDisplayMonitors');
+        _getMonitorInfoW = _user32!.lookupFunction<_GetMonitorInfoWNative, _GetMonitorInfoWDart>('GetMonitorInfoW');
+        _getForegroundWindow = _user32!.lookupFunction<_GetForegroundWindowNative, _GetForegroundWindowDart>('GetForegroundWindow');
+        _getWindowRect = _user32!.lookupFunction<_GetWindowRectNative, _GetWindowRectDart>('GetWindowRect');
+        _monitorFromWindow = _user32!.lookupFunction<_MonitorFromWindowNative, _MonitorFromWindowDart>('MonitorFromWindow');
+        _getIconInfo = _user32!.lookupFunction<_GetIconInfoNative, _GetIconInfoDart>('GetIconInfo');
+        _getDC = _user32!.lookupFunction<_GetDCNative, _GetDCDart>('GetDC');
+        _releaseDC = _user32!.lookupFunction<_ReleaseDCNative, _ReleaseDCDart>('ReleaseDC');
+      } catch (_) {}
+      try {
         final shell32 = DynamicLibrary.open('shell32.dll');
         _extractIconExW = shell32.lookupFunction<_ExtractIconExWNative, _ExtractIconExWDart>('ExtractIconExW');
+        _shGetFileInfoW = shell32.lookupFunction<_SHGetFileInfoWNative, _SHGetFileInfoWDart>('SHGetFileInfoW');
+      } catch (_) {}
+      try {
+        final gdi32 = DynamicLibrary.open('gdi32.dll');
+        _getObjectW = gdi32.lookupFunction<_GetObjectWNative, _GetObjectWDart>('GetObjectW');
+        _getDIBits = gdi32.lookupFunction<_GetDIBitsNative, _GetDIBitsDart>('GetDIBits');
+        _deleteObject = gdi32.lookupFunction<_DeleteObjectNative, _DeleteObjectDart>('DeleteObject');
       } catch (_) {}
 
       _openProcess = _kernel32!.lookupFunction<_OpenProcessNative, _OpenProcessDart>('OpenProcess');
@@ -404,12 +557,195 @@ class WindowsIntegration {
     }
   }
 
+
+  static final List<({int left, int top, int width, int height, bool isPrimary})> _monitorsCache = [];
+
+  static int _monitorEnumCallback(int hMonitor, int hdcMonitor, Pointer<_Rect> lprcMonitor, int dwData) {
+    if (_getMonitorInfoW == null) return 1;
+    final info = calloc<_MonitorInfo>();
+    try {
+      info.ref.cbSize = sizeOf<_MonitorInfo>();
+      if (_getMonitorInfoW!(hMonitor, info) != 0) {
+        final w = info.ref.rcWork;
+        final isPrimary = (info.ref.dwFlags & 1) != 0;
+        _monitorsCache.add((
+          left: w.left,
+          top: w.top,
+          width: w.right - w.left,
+          height: w.bottom - w.top,
+          isPrimary: isPrimary,
+        ));
+      }
+    } finally {
+      calloc.free(info);
+    }
+    return 1;
+  }
+
+  /// Enumerates connected Windows displays and returns work-area bounds for [monitorIndex]
+  static ({int left, int top, int width, int height})? getMonitorWorkArea(int monitorIndex) {
+    if (!Platform.isWindows || !_ensureFfi() || _enumDisplayMonitors == null) return null;
+    _monitorsCache.clear();
+    final cb = Pointer.fromFunction<_MonitorEnumProcNative>(_monitorEnumCallback, 0);
+    _enumDisplayMonitors!(0, nullptr, cb, 0);
+    if (_monitorsCache.isEmpty) return null;
+    // Sort primary monitor first so index 0 is always Primary
+    _monitorsCache.sort((a, b) => (b.isPrimary ? 1 : 0).compareTo(a.isPrimary ? 1 : 0));
+    final idx = monitorIndex.clamp(0, _monitorsCache.length - 1);
+    final m = _monitorsCache[idx];
+    return (left: m.left, top: m.top, width: m.width, height: m.height);
+  }
+
+  static int getMonitorCount() {
+    getMonitorWorkArea(0);
+    return _monitorsCache.isEmpty ? 1 : _monitorsCache.length;
+  }
+
+  /// Detects if a foreground third-party window covers its entire monitor (fullscreen game / video)
+  static bool isForegroundAppFullscreen() {
+    if (!Platform.isWindows || !_ensureFfi()) return false;
+    if (_getForegroundWindow == null || _getWindowRect == null || _monitorFromWindow == null || _getMonitorInfoW == null) {
+      return false;
+    }
+    final hwnd = _getForegroundWindow!();
+    if (hwnd == 0) return false;
+
+    final pidPtr = calloc<Uint32>();
+    try {
+      _getWindowThreadProcessId!(hwnd, pidPtr);
+      if (pidPtr.value == pid) return false;
+    } finally {
+      calloc.free(pidPtr);
+    }
+
+    final winRect = calloc<_Rect>();
+    final monInfo = calloc<_MonitorInfo>();
+    try {
+      if (_getWindowRect!(hwnd, winRect) == 0) return false;
+      final hMon = _monitorFromWindow!(hwnd, 2);
+      if (hMon == 0) return false;
+      monInfo.ref.cbSize = sizeOf<_MonitorInfo>();
+      if (_getMonitorInfoW!(hMon, monInfo) == 0) return false;
+
+      final m = monInfo.ref.rcMonitor;
+      final w = winRect.ref;
+      return w.left <= m.left && w.top <= m.top && w.right >= m.right && w.bottom >= m.bottom;
+    } catch (_) {
+      return false;
+    } finally {
+      calloc.free(winRect);
+      calloc.free(monInfo);
+    }
+  }
+
+  /// Pure Win32 FFI icon extractor (SHGetFileInfoW + GetDIBits -> 32-bit BGRA BMP, 0 PowerShell processes)
+  static String? extractNativeIconBmp(String filePath) {
+    if (!Platform.isWindows || !_ensureFfi()) return null;
+    if (_shGetFileInfoW == null || _getIconInfo == null || _getObjectW == null || _getDIBits == null || _getDC == null || _releaseDC == null) {
+      return null;
+    }
+    final sw = Stopwatch()..start();
+    final cacheDir = PortableStorage.iconsCacheDir;
+    final hash = filePath.hashCode.abs().toString();
+    final outPath = '${cacheDir.path}${Platform.pathSeparator}icon_native_$hash.bmp';
+    if (File(outPath).existsSync()) return outPath;
+
+    final pathPtr = filePath.toNativeUtf16();
+    final shfi = calloc<_ShFileInfoW>();
+    final iconInfo = calloc<_IconInfo>();
+    final bmpStruct = calloc<_Bitmap>();
+    final bih = calloc<_BitmapInfoHeader>();
+    int hIcon = 0;
+    int hdc = 0;
+
+    try {
+      // SHGFI_ICON (0x100) | SHGFI_LARGEICON (0x0)
+      final res = _shGetFileInfoW!(pathPtr, 0, shfi, sizeOf<_ShFileInfoW>(), 0x000000100);
+      hIcon = shfi.ref.hIcon;
+      if (res == 0 || hIcon == 0) return null;
+
+      if (_getIconInfo!(hIcon, iconInfo) == 0) return null;
+      final hbmColor = iconInfo.ref.hbmColor;
+      if (hbmColor == 0) return null;
+
+      if (_getObjectW!(hbmColor, sizeOf<_Bitmap>(), bmpStruct.cast<Void>()) == 0) return null;
+      final width = bmpStruct.ref.bmWidth;
+      final height = bmpStruct.ref.bmHeight.abs();
+      if (width <= 0 || height <= 0 || width > 512 || height > 512) return null;
+
+      final imageSize = width * height * 4;
+      bih.ref.biSize = sizeOf<_BitmapInfoHeader>();
+      bih.ref.biWidth = width;
+      bih.ref.biHeight = height;
+      bih.ref.biPlanes = 1;
+      bih.ref.biBitCount = 32;
+      bih.ref.biCompression = 0; // BI_RGB
+      bih.ref.biSizeImage = imageSize;
+
+      hdc = _getDC!(0);
+      final pixels = calloc<Uint8>(imageSize);
+      try {
+        final lines = _getDIBits!(hdc, hbmColor, 0, height, pixels, bih, 0);
+        if (lines == 0) return null;
+
+        final fileSize = 54 + imageSize;
+        final header = BytesBuilder(copy: false);
+        header.add([0x42, 0x4D]); // 'BM'
+        header.add(_u32(fileSize));
+        header.add(_u32(0));
+        header.add(_u32(54));
+        header.add(_u32(40));
+        header.add(_i32(width));
+        header.add(_i32(height));
+        header.add(_u16(1));
+        header.add(_u16(32));
+        header.add(_u32(0));
+        header.add(_u32(imageSize));
+        header.add(_i32(0));
+        header.add(_i32(0));
+        header.add(_u32(0));
+        header.add(_u32(0));
+
+        final outBytes = Uint8List(fileSize);
+        outBytes.setAll(0, header.takeBytes());
+        outBytes.setAll(54, pixels.asTypedList(imageSize));
+        File(outPath).writeAsBytesSync(outBytes, flush: false);
+
+        sw.stop();
+        recordActivity('Win32 FFI иконка (без PowerShell): ${filePath.split(RegExp(r'[/\]')).last}', durationMs: sw.elapsedMilliseconds);
+        return outPath;
+      } finally {
+        calloc.free(pixels);
+      }
+    } catch (_) {
+      return null;
+    } finally {
+      if (hdc != 0) _releaseDC!(0, hdc);
+      if (iconInfo.ref.hbmColor != 0 && _deleteObject != null) _deleteObject!(iconInfo.ref.hbmColor);
+      if (iconInfo.ref.hbmMask != 0 && _deleteObject != null) _deleteObject!(iconInfo.ref.hbmMask);
+      if (hIcon != 0 && _destroyIcon != null) _destroyIcon!(hIcon);
+      calloc.free(pathPtr);
+      calloc.free(shfi);
+      calloc.free(iconInfo);
+      calloc.free(bmpStruct);
+      calloc.free(bih);
+    }
+  }
+
+  static List<int> _u16(int v) => [v & 0xFF, (v >> 8) & 0xFF];
+  static List<int> _u32(int v) => [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF];
+  static List<int> _i32(int v) => _u32(v);
+
   static Future<String?> extractJumboIcon(String filePath, {required bool enabled}) async {
     if (!Platform.isWindows || !enabled || filePath.isEmpty) return null;
     try {
       final lower = filePath.toLowerCase();
       if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.bmp')) {
         return filePath;
+      }
+      final nativeBmp = extractNativeIconBmp(filePath);
+      if (nativeBmp != null) {
+        return nativeBmp;
       }
       final cacheDir = PortableStorage.iconsCacheDir;
       final hash = filePath.hashCode.abs().toString();

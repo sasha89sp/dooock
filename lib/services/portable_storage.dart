@@ -256,6 +256,26 @@ class PortableStorage {
     return (removedFiles: removed, freedKb: freedBytes / 1024.0);
   }
 
+
+  static Future<IniImportResult?> loadProfileFromFile(
+    String profilePath, {
+    required DockSettings baseSettings,
+  }) async {
+    try {
+      final file = File(profilePath);
+      if (!await file.exists()) return null;
+      final bytes = await file.readAsBytes();
+      final decoded = _decodeBytesSmart(bytes);
+      return parseIniString(
+        decoded.text,
+        baseSettings: baseSettings,
+        sourceLabel: '${file.path} (${decoded.encoding})',
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<bool> exportProfileIni(
     String targetPath,
     DockSettings settings,
@@ -278,7 +298,7 @@ class PortableStorage {
       const encoder = JsonEncoder.withIndent('  ');
       await jsonFile.writeAsString(encoder.convert({
         'portable': true,
-        'version': '2.4.7',
+        'version': '2.4.8',
         'settings': settings.toMap(),
         'items': items.map((e) => e.toJson()).toList(),
       }));
