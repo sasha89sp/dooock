@@ -257,6 +257,56 @@ class _DockScreenState extends State<DockScreen>
     });
   }
 
+  Future<int> _reextractAllIconsManually() async {
+    _attemptedNativeIconIds.clear();
+    _clearImageCache();
+    int extractedCount = 0;
+
+    for (final item in items) {
+      if (item.isSeparator || item.isHardwareWidget || item.isWidgetPlugin || item.isPowerAction) {
+        continue;
+      }
+      final prevPath = _resolveEnvPath(item.customIconPath);
+      if (prevPath.isNotEmpty) {
+        final prevFile = File(prevPath);
+        if (prevPath.toLowerCase().contains('icons_cache') && await prevFile.exists()) {
+          try {
+            await prevFile.delete();
+          } catch (_) {}
+        }
+        item.customIconPath = '';
+      }
+
+      final target = _resolveEnvPath(item.targetPath);
+      if (Platform.isWindows && target.isNotEmpty) {
+        _attemptedNativeIconIds.add(item.id);
+        final tLower = target.toLowerCase();
+        if (!tLower.startsWith('http://') &&
+            !tLower.startsWith('https://') &&
+            !tLower.startsWith('shell:') &&
+            !tLower.startsWith('ms-')) {
+          final effectiveTarget = _resolveEnvPath(
+            await WindowsIntegration.resolveShortcutTargetIfNeeded(target),
+          );
+          final outBmp = WindowsIntegration.extractNativeIconBmp(effectiveTarget) ??
+              WindowsIntegration.extractNativeIconBmp(target);
+          if (outBmp != null && await File(outBmp).exists()) {
+            item.customIconPath = outBmp;
+            extractedCount++;
+          }
+        }
+      }
+    }
+
+    await _warmUpIconCache();
+    await PortableStorage.save(_settings, items);
+    if (mounted) {
+      setState(() {});
+      _frameTick.value++;
+    }
+    return extractedCount;
+  }
+
   Future<void> _warmUpIconCache() async {
     int warmed = 0;
     bool updatedAnyPath = false;
@@ -1217,6 +1267,7 @@ class _DockScreenState extends State<DockScreen>
             final res = await PortableStorage.cleanOrphanedIconCache(active);
             return 'Удалено устаревших файлов кэша: ${res.removedFiles} (${res.freedKb.toStringAsFixed(1)} КБ)';
           },
+          onReextractIconsManually: _reextractAllIconsManually,
           onClearDebugLog: () async {
             setState(() => _lastImportDebugLog = '');
             try {
@@ -2226,7 +2277,18 @@ class _DockScreenState extends State<DockScreen>
   }
 
   Widget _buildFallbackSquircle(DockItemData item, double size) {
-    return SizedBox(width: size, height: size);
+    final radius = size * 0.225;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        color: const Color(0xFF2C2C34),
+        border: Border.all(color: Colors.white.withOpacity(0.28), width: 0.8),
+      ),
+      alignment: Alignment.center,
+      child: Icon(Icons.apps_rounded, color: Colors.white70, size: size * 0.52),
+    );
   }
 
   int _quickLaunchSlotForItem(DockItemData target) {

@@ -44,6 +44,21 @@ typedef _ShowWindowDart = int Function(int hwnd, int nCmdShow);
 typedef _IsIconicNative = Int32 Function(IntPtr hwnd);
 typedef _IsIconicDart = int Function(int hwnd);
 
+typedef _ExtractIconExWNative = Uint32 Function(
+  Pointer<Utf16> lpszFile,
+  Int32 nIconIndex,
+  Pointer<IntPtr> phiconLarge,
+  Pointer<IntPtr> phiconSmall,
+  Uint32 nIcons,
+);
+typedef _ExtractIconExWDart = int Function(
+  Pointer<Utf16> lpszFile,
+  int nIconIndex,
+  Pointer<IntPtr> phiconLarge,
+  Pointer<IntPtr> phiconSmall,
+  int nIcons,
+);
+
 typedef _DestroyIconNative = Int32 Function(IntPtr hIcon);
 typedef _DestroyIconDart = int Function(int hIcon);
 
@@ -288,6 +303,7 @@ class WindowsIntegration {
   static _ShowWindowDart? _showWindow;
   static _IsIconicDart? _isIconic;
   static _DestroyIconDart? _destroyIcon;
+  static _ExtractIconExWDart? _extractIconExW;
   static _GetCurrentProcessDart? _getCurrentProcess;
   static _SetProcessWorkingSetSizeDart? _setProcessWorkingSetSize;
   static _GetProcessMemoryInfoDart? _getProcessMemoryInfo;
@@ -345,6 +361,10 @@ class WindowsIntegration {
       _showWindow = _user32!.lookupFunction<_ShowWindowNative, _ShowWindowDart>('ShowWindow');
       _isIconic = _user32!.lookupFunction<_IsIconicNative, _IsIconicDart>('IsIconic');
       _destroyIcon = _user32!.lookupFunction<_DestroyIconNative, _DestroyIconDart>('DestroyIcon');
+      try {
+        final shell32 = DynamicLibrary.open('shell32.dll');
+        _extractIconExW = shell32.lookupFunction<_ExtractIconExWNative, _ExtractIconExWDart>('ExtractIconExW');
+      } catch (_) {}
       try {
         _enumDisplayMonitors = _user32!.lookupFunction<_EnumDisplayMonitorsNative, _EnumDisplayMonitorsDart>('EnumDisplayMonitors');
         _getMonitorInfoW = _user32!.lookupFunction<_GetMonitorInfoWNative, _GetMonitorInfoWDart>('GetMonitorInfoW');
@@ -690,9 +710,28 @@ class WindowsIntegration {
 
     try {
       // SHGFI_ICON (0x100) | SHGFI_LARGEICON (0x0)
-      final res = _shGetFileInfoW!(pathPtr, 0, shfi, sizeOf<_ShFileInfoW>(), 0x000000100);
-      hIcon = shfi.ref.hIcon;
-      if (res == 0 || hIcon == 0) return null;
+      final res = _shGetFileInfoW != null
+          ? _shGetFileInfoW!(pathPtr, 0, shfi, sizeOf<_ShFileInfoW>(), 0x000000100)
+          : 0;
+      hIcon = res != 0 ? shfi.ref.hIcon : 0;
+      if (hIcon == 0 && _extractIconExW != null) {
+        final largePtr = calloc<IntPtr>();
+        final smallPtr = calloc<IntPtr>();
+        try {
+          _extractIconExW!(pathPtr, 0, largePtr, smallPtr, 1);
+          hIcon = largePtr.value != 0 ? largePtr.value : smallPtr.value;
+          if (largePtr.value != 0 && hIcon != largePtr.value && _destroyIcon != null) {
+            _destroyIcon!(largePtr.value);
+          }
+          if (smallPtr.value != 0 && hIcon != smallPtr.value && _destroyIcon != null) {
+            _destroyIcon!(smallPtr.value);
+          }
+        } finally {
+          calloc.free(largePtr);
+          calloc.free(smallPtr);
+        }
+      }
+      if (hIcon == 0) return null;
 
       if (_getIconInfo!(hIcon, iconInfo) == 0) return null;
       final hbmColor = iconInfo.ref.hbmColor;

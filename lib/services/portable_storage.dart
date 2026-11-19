@@ -327,7 +327,7 @@ class PortableStorage {
       const encoder = JsonEncoder.withIndent('  ');
       await jsonFile.writeAsString(encoder.convert({
         'portable': true,
-        'version': '2.5.6',
+        'version': '2.5.8',
         'settings': settings.toMap(),
         'items': items.map((e) => e.toJson()).toList(),
       }));

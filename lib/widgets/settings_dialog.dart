@@ -21,6 +21,7 @@ class RocketDockSettingsDialog extends StatefulWidget {
   final String Function()? onCollectDiagnostics;
   final VoidCallback? onTrimMemoryNow;
   final Future<String> Function()? onCleanDiskIconCache;
+  final Future<int> Function()? onReextractIconsManually;
 
   const RocketDockSettingsDialog({
     super.key,
@@ -38,6 +39,7 @@ class RocketDockSettingsDialog extends StatefulWidget {
     this.onCollectDiagnostics,
     this.onTrimMemoryNow,
     this.onCleanDiskIconCache,
+    this.onReextractIconsManually,
   });
 
   @override
@@ -838,6 +840,32 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
             readout: '${_draft.baseIconSize.round()}px',
             onChanged: (v) => setState(() => _draft.baseIconSize = v),
           ),
+          if (widget.onReextractIconsManually != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Принудительное извлечение иконок', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        Text('Заново вытягивает иконки напрямую из программ и ярлыков и обновляет кэш', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                  _macSecondaryButton('Переизвлечь из программ', () async {
+                    final count = await widget.onReextractIconsManually!();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Обновлено иконок из программ: $count')),
+                      );
+                      setState(() {});
+                    }
+                  }),
+                ],
+              ),
+            ),
         ], header: 'Размер и рендеринг'),
         _macGroupCard([
           _macDropdownRow<HoverZoomMode>(
@@ -1195,7 +1223,7 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
                     children: [
                       Text('RocketDock Portable macOS Edition', style: TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700)),
                       SizedBox(height: 3),
-                      Text('Версия 2.5.6 • Env-Expanded Icons & Verified INI Import', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
+                      Text('Версия 2.5.8 • Manual Re-Extraction & Cached Native Icons', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
                       SizedBox(height: 3),
                       Text('Чёткие иконки • 2D-наведение по рядам • Импорт Settings.ini', style: TextStyle(color: Colors.white60, fontSize: 11.5)),
                     ],
