@@ -1,6 +1,7 @@
-version: 2.6.6
+version: 2.6.7
 status: active
 current_state:
-  - Упрощена и приведена к логике классического RocketDock работа с иконками (_warmUpIconCache и _reextractAllIconsManually), убраны лишние ветки повторного перебора и сохранён кэш на диске и в памяти.
+  - Иконки: WindowsIntegration.extractNativeIcon (бывш. extractNativeIconBmp) пишет PNG с корректной альфой (для старых иконок без альфы берётся AND-маска) вместо BMP BI_RGB; кэш icon_v3_*.png со стабильным FNV-хэшем; старые icons_cache/*.bmp считаются устаревшими и переизвлекаются.
+  - Изменения не компилировались и не запускались (в среде нет Flutter/Dart SDK).
 next_step:
-  - Скачать архив roket_dok_v2_6_6_rel.zip, распаковать в локальный репозиторий на Windows и выполнить dart analyze, flutter test и flutter build windows --release.
+  - На Windows выполнить dart analyze, flutter test, flutter build windows --release; проверить иконки (в т.ч. старые .exe без альфы) и при необходимости нажать «Переизвлечь иконки» в настройках.

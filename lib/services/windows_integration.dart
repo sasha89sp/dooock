@@ -690,8 +690,8 @@ class WindowsIntegration {
     return p;
   }
 
-  /// Pure Win32 FFI icon extractor with detailed step-by-step diagnostic trace
-  static String? extractNativeIconBmp(String filePath, {int iconIndex = 0}) {
+  /// Pure Win32 FFI icon extractor (writes an RGBA PNG with correct alpha) with step-by-step diagnostic trace
+  static String? extractNativeIcon(String filePath, {int iconIndex = 0}) {
     final dbg = StringBuffer();
     dbg.writeln('path="$filePath" idx=$iconIndex exists=${File(filePath).existsSync()} dir=${Directory(filePath).existsSync()}');
     if (!Platform.isWindows) {
@@ -711,16 +711,16 @@ class WindowsIntegration {
       return null;
     }
     final lowerFile = filePath.toLowerCase();
-    if (lowerFile.contains('icons_cache') && lowerFile.endsWith('.bmp')) {
-      dbg.writeln('stop: refusing to extract icon from icons_cache bmp');
+    if (lowerFile.contains('icons_cache') && (lowerFile.endsWith('.bmp') || lowerFile.endsWith('.png'))) {
+      dbg.writeln('stop: refusing to extract icon from icons_cache file');
       lastIconDebugTrace = dbg.toString().trimRight();
       return File(filePath).existsSync() ? filePath : null;
     }
     final safeIdx = (iconIndex < -65535 || iconIndex > 1024) ? 0 : iconIndex;
     final sw = Stopwatch()..start();
     final cacheDir = PortableStorage.iconsCacheDir;
-    final hash = filePath.hashCode.abs().toString();
-    final outPath = '${cacheDir.path}${Platform.pathSeparator}icon_native_${hash}_i${safeIdx.abs()}.bmp';
+    final hash = _stableHash(filePath.toLowerCase());
+    final outPath = '${cacheDir.path}${Platform.pathSeparator}icon_v3_${hash}_i${safeIdx}.png';
     if (File(outPath).existsSync()) {
       dbg.writeln('hit disk cache: $outPath');
       lastIconDebugTrace = dbg.toString().trimRight();
@@ -822,55 +822,57 @@ class WindowsIntegration {
           return null;
         }
 
-        final fileSize = 54 + imageSize;
         final rawView = pixels.asTypedList(imageSize);
-        final rgbaBytes = Uint8List(imageSize);
-        int anyAlpha = 0;
-        for (int i = 0; i < imageSize; i += 4) {
-          if (rawView[i + 3] != 0) {
-            anyAlpha++;
+        var hasAlpha = false;
+        for (int i = 3; i < imageSize; i += 4) {
+          if (rawView[i] != 0) {
+            hasAlpha = true;
             break;
           }
         }
-        final rowBytes = width * 4;
-        for (int y = 0; y < height; y++) {
-          final srcRow = (height - 1 - y) * rowBytes;
-          final dstRow = y * rowBytes;
-          for (int x = 0; x < rowBytes; x += 4) {
-            final b = rawView[srcRow + x];
-            final g = rawView[srcRow + x + 1];
-            final r = rawView[srcRow + x + 2];
-            final a = anyAlpha > 0 ? rawView[srcRow + x + 3] : ((b | g | r) == 0 ? 0 : 255);
-            rgbaBytes[dstRow + x] = b;
-            rgbaBytes[dstRow + x + 1] = g;
-            rgbaBytes[dstRow + x + 2] = r;
-            rgbaBytes[dstRow + x + 3] = a;
+        // Old icons (<32bpp) carry no alpha in the color bitmap: use the AND mask instead
+        Pointer<Uint8>? maskPixels;
+        Uint8List? maskView;
+        try {
+          if (!hasAlpha && hbmMask != 0) {
+            maskPixels = calloc<Uint8>(imageSize);
+            final mLines = _getDIBits!(hdc, hbmMask, 0, height, maskPixels, bih, 0);
+            dbg.writeln('GetDIBits(mask): lines=$mLines');
+            if (mLines != 0) maskView = maskPixels.asTypedList(imageSize);
           }
+          final rowBytes = width * 4;
+          final scan = rowBytes + 1;
+          final rgba = Uint8List(height * scan); // PNG scanlines, filter byte 0
+          for (int y = 0; y < height; y++) {
+            final srcRow = (height - 1 - y) * rowBytes; // DIB is bottom-up
+            final dstRow = y * scan + 1;
+            for (int x = 0; x < rowBytes; x += 4) {
+              final si = srcRow + x;
+              final di = dstRow + x;
+              final int a;
+              if (hasAlpha) {
+                a = rawView[si + 3];
+              } else if (maskView != null) {
+                a = (maskView[si] | maskView[si + 1] | maskView[si + 2]) != 0 ? 0 : 255;
+              } else {
+                a = 255;
+              }
+              rgba[di] = rawView[si + 2];
+              rgba[di + 1] = rawView[si + 1];
+              rgba[di + 2] = rawView[si];
+              rgba[di + 3] = a;
+            }
+          }
+          final outBytes = _encodePng(width, height, rgba);
+          File(outPath).writeAsBytesSync(outBytes, flush: false);
+          dbg.writeln('alpha=${hasAlpha ? "dib" : (maskView != null ? "mask" : "opaque")}');
+        } finally {
+          if (maskPixels != null) calloc.free(maskPixels);
         }
-        final topDownHeader = BytesBuilder(copy: false);
-        topDownHeader.add([0x42, 0x4D]); // 'BM'
-        topDownHeader.add(_u32(fileSize));
-        topDownHeader.add(_u32(0));
-        topDownHeader.add(_u32(54));
-        topDownHeader.add(_u32(40));
-        topDownHeader.add(_i32(width));
-        topDownHeader.add(_i32(-height));
-        topDownHeader.add(_u16(1));
-        topDownHeader.add(_u16(32));
-        topDownHeader.add(_u32(0));
-        topDownHeader.add(_u32(imageSize));
-        topDownHeader.add(_i32(0));
-        topDownHeader.add(_i32(0));
-        topDownHeader.add(_u32(0));
-        topDownHeader.add(_u32(0));
-
-        final outBytes = Uint8List(fileSize);
-        outBytes.setAll(0, topDownHeader.takeBytes());
-        outBytes.setAll(54, rgbaBytes);
-        File(outPath).writeAsBytesSync(outBytes, flush: false);
+        final outBytesLen = File(outPath).lengthSync();
 
         sw.stop();
-        dbg.writeln('ok wrote: $outPath (${outBytes.length} bytes)');
+        dbg.writeln('ok wrote: $outPath ($outBytesLen bytes)');
         lastIconDebugTrace = dbg.toString().trimRight();
         recordActivity('Win32 FFI иконка (без PowerShell): ${filePath.split(RegExp(r'[/\\]')).last}', durationMs: sw.elapsedMilliseconds);
         return outPath;
@@ -978,8 +980,52 @@ class WindowsIntegration {
 
   static bool get isGlobalHotkeyRegistered => _hotkeysRegistered;
 
-  static List<int> _u16(int v) => [v & 0xFF, (v >> 8) & 0xFF];
-  static List<int> _u32(int v) => [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF];
-  static List<int> _i32(int v) => _u32(v);
+  static String _stableHash(String input) {
+    var h = 0x811C9DC5; // FNV-1a 32-bit
+    for (final c in input.codeUnits) {
+      h = ((h ^ c) * 0x01000193) & 0xFFFFFFFF;
+    }
+    return h.toRadixString(16).padLeft(8, '0');
+  }
+
+  static final Uint32List _crcTable = () {
+    final t = Uint32List(256);
+    for (int n = 0; n < 256; n++) {
+      var c = n;
+      for (int k = 0; k < 8; k++) {
+        c = (c & 1) != 0 ? (0xEDB88320 ^ (c >> 1)) : (c >> 1);
+      }
+      t[n] = c;
+    }
+    return t;
+  }();
+
+  static int _crc32(List<int> data) {
+    var c = 0xFFFFFFFF;
+    for (final b in data) {
+      c = _crcTable[(c ^ b) & 0xFF] ^ (c >> 8);
+    }
+    return (c ^ 0xFFFFFFFF) & 0xFFFFFFFF;
+  }
+
+  static List<int> _beU32(int v) => [(v >> 24) & 0xFF, (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF];
+
+  /// Encodes 8-bit RGBA scanlines (each prefixed with filter byte 0) as PNG
+  static Uint8List _encodePng(int w, int h, Uint8List scanlines) {
+    final out = BytesBuilder(copy: false);
+    out.add(const [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    void chunk(String type, List<int> data) {
+      final body = Uint8List(4 + data.length)
+        ..setAll(0, type.codeUnits)
+        ..setAll(4, data);
+      out.add(_beU32(data.length));
+      out.add(body);
+      out.add(_beU32(_crc32(body)));
+    }
+    chunk('IHDR', [..._beU32(w), ..._beU32(h), 8, 6, 0, 0, 0]);
+    chunk('IDAT', zlib.encode(scanlines));
+    chunk('IEND', const <int>[]);
+    return out.takeBytes();
+  }
 
 }

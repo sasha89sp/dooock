@@ -295,7 +295,8 @@ class _DockScreenState extends State<DockScreen>
         continue;
       }
       final prevPath = _resolveEnvPath(item.customIconPath);
-      if (prevPath.toLowerCase().contains('icons_cache') && prevPath.toLowerCase().endsWith('.bmp')) {
+      if (prevPath.toLowerCase().contains('icons_cache') &&
+          (prevPath.toLowerCase().endsWith('.bmp') || prevPath.toLowerCase().endsWith('.png'))) {
         final f = File(prevPath);
         if (await f.exists()) {
           try {
@@ -320,8 +321,8 @@ class _DockScreenState extends State<DockScreen>
           final resolved = _resolveEnvPath(
             await WindowsIntegration.resolveShortcutTargetIfNeeded(srcPath),
           );
-          final outBmp = WindowsIntegration.extractNativeIconBmp(resolved, iconIndex: item.iconIndex) ??
-              WindowsIntegration.extractNativeIconBmp(srcPath, iconIndex: item.iconIndex);
+          final outBmp = WindowsIntegration.extractNativeIcon(resolved, iconIndex: item.iconIndex) ??
+              WindowsIntegration.extractNativeIcon(srcPath, iconIndex: item.iconIndex);
           if (outBmp != null && await File(outBmp).exists()) {
             item.customIconPath = outBmp;
             extractedCount++;
@@ -353,7 +354,11 @@ class _DockScreenState extends State<DockScreen>
       String path = _resolveEnvPath(item.customIconPath);
       final target = _resolveEnvPath(item.targetPath);
       final lowerPath = path.toLowerCase();
+      final inIconsCache = lowerPath.contains('icons_cache');
+      // Legacy cached .bmp icons (no alpha → black squares) are treated as stale and re-extracted as PNG
+      final isLegacyCacheBmp = inIconsCache && lowerPath.endsWith('.bmp');
       final isDirectRaster = path.isNotEmpty &&
+          !isLegacyCacheBmp &&
           (lowerPath.endsWith('.png') ||
               lowerPath.endsWith('.jpg') ||
               lowerPath.endsWith('.jpeg') ||
@@ -365,8 +370,7 @@ class _DockScreenState extends State<DockScreen>
           _settings.autoExtractExeIcons &&
           !_attemptedNativeIconIds.contains(item.id)) {
         _attemptedNativeIconIds.add(item.id);
-        final isCacheBmp = lowerPath.contains('icons_cache') && lowerPath.endsWith('.bmp');
-        final src = (path.isNotEmpty && !isCacheBmp) ? path : target;
+        final src = (path.isNotEmpty && !inIconsCache) ? path : target;
         final sLower = src.toLowerCase();
         if (src.isNotEmpty &&
             !sLower.startsWith('http://') &&
@@ -376,8 +380,8 @@ class _DockScreenState extends State<DockScreen>
           final resolved = _resolveEnvPath(
             await WindowsIntegration.resolveShortcutTargetIfNeeded(src),
           );
-          final extracted = WindowsIntegration.extractNativeIconBmp(resolved, iconIndex: item.iconIndex) ??
-              WindowsIntegration.extractNativeIconBmp(src, iconIndex: item.iconIndex);
+          final extracted = WindowsIntegration.extractNativeIcon(resolved, iconIndex: item.iconIndex) ??
+              WindowsIntegration.extractNativeIcon(src, iconIndex: item.iconIndex);
           if (extracted != null) {
             item.customIconPath = extracted;
             path = extracted;
@@ -1118,8 +1122,8 @@ class _DockScreenState extends State<DockScreen>
 
     if (!isDir && _settings.autoExtractExeIcons) {
       final resolvedPath = await WindowsIntegration.resolveShortcutTargetIfNeeded(path);
-      final extractedIcon = WindowsIntegration.extractNativeIconBmp(resolvedPath) ??
-          WindowsIntegration.extractNativeIconBmp(path);
+      final extractedIcon = WindowsIntegration.extractNativeIcon(resolvedPath) ??
+          WindowsIntegration.extractNativeIcon(path);
       if (extractedIcon != null && mounted) {
         final file = File(extractedIcon);
         if (await file.exists()) {
