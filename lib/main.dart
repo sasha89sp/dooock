@@ -187,7 +187,7 @@ class _DockScreenState extends State<DockScreen>
     final mem = WindowsIntegration.getProcessMemoryInfo();
     final buf = StringBuffer();
     buf.writeln('Режим: ${_isEffectiveEcoMode ? "Экономичный${_settings.ecoDesktopMode ? " (вручную)" : (_isFullscreenAppActive ? " (авто: полный экран)" : " (авто: батарея)")}" : "Стандартный"}');
-    buf.writeln('Монитор: #${_settings.monitorIndex + 1} (всего: ${WindowsIntegration.getMonitorCount()})');
+    buf.writeln('Монитор: #${_settings.monitorIndex + 1} (всего: ${WindowsIntegration.getMonitorCount()}) | Громкость: ${_volNotifier.value}% | Hotkey: ${WindowsIntegration.isGlobalHotkeyRegistered ? "активен" : "выкл"}');
     buf.writeln('Положение: ${_settings.layering.name} (${_settings.screenEdge.name})');
     if (mem.workingSetMb > 0) {
       buf.writeln('Память (Working Set): ${mem.workingSetMb.toStringAsFixed(1)} МБ | Private: ${mem.privateBytesMb.toStringAsFixed(1)} МБ');
@@ -216,6 +216,7 @@ class _DockScreenState extends State<DockScreen>
 
   void _scheduleDebouncedSave() {
     _saveDebounceTimer?.cancel();
+    WindowsIntegration.unregisterGlobalToggleHotkey();
     _idleTrimTimer?.cancel();
     _saveDebounceTimer = Timer(const Duration(milliseconds: 350), () {
       unawaited(PortableStorage.save(_settings, items));
@@ -234,6 +235,9 @@ class _DockScreenState extends State<DockScreen>
     _initSystemTray();
     _loadAllSettings();
     _startTimers();
+    if (_settings.globalHotkeysEnabled) {
+      WindowsIntegration.registerGlobalToggleHotkey();
+    }
   }
 
   Future<void> _warmUpIconCache() async {
@@ -421,7 +425,7 @@ class _DockScreenState extends State<DockScreen>
       _tempNotifier.value = NativeHardwareTelemetry.getCpuTemperatureCelsius(cpu);
       if (_settings.showExtraSystemWidgets) {
         _netNotifier.value = NativeHardwareTelemetry.getNetworkLoadPercent(cpu);
-        _volNotifier.value = NativeHardwareTelemetry.getVolumePercent();
+        _volNotifier.value = WindowsIntegration.getSystemVolumePercent();
         _batNotifier.value = NativeHardwareTelemetry.getBatteryPercent();
       }
     }
@@ -766,7 +770,9 @@ class _DockScreenState extends State<DockScreen>
       }
       if (queryLower.isNotEmpty) {
         if (it.isSeparator) return false;
-        return it.title.toLowerCase().contains(queryLower);
+        if (it.title.toLowerCase().contains(queryLower)) return true;
+        if (_settings.spotlightCommandSearch && it.targetPath.toLowerCase().contains(queryLower)) return true;
+        return false;
       }
       return true;
     }).toList();
@@ -1122,6 +1128,15 @@ class _DockScreenState extends State<DockScreen>
           onImportIni: _importClassicRocketDockIni,
           onExportIni: _exportProfileIniDialog,
           onSaveNamedProfile: _saveToProfilesDir,
+          profiles: _availableProfiles,
+          onDeleteProfile: (pPath) async {
+            await PortableStorage.deleteProfileFile(pPath);
+            _availableProfiles = await PortableStorage.listSavedProfiles();
+          },
+          onRenameProfile: (pPath, newName) async {
+            await PortableStorage.renameProfileFile(pPath, newName);
+            _availableProfiles = await PortableStorage.listSavedProfiles();
+          },
           lastDebugLog: _lastImportDebugLog,
           onCollectDiagnostics: _buildDiagnosticsSummary,
           onTrimMemoryNow: () {
@@ -1153,6 +1168,11 @@ class _DockScreenState extends State<DockScreen>
       });
       if (startupChanged) {
         await WindowsIntegration.setStartWithWindows(_settings.startWithWindows);
+      }
+      if (_settings.globalHotkeysEnabled) {
+        WindowsIntegration.registerGlobalToggleHotkey();
+      } else {
+        WindowsIntegration.unregisterGlobalToggleHotkey();
       }
       await PortableStorage.save(_settings, items);
       await _applyWindowProperties();

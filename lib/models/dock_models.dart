@@ -64,6 +64,8 @@ class DockSettings {
   bool autoEcoOnBattery;
   bool autoPauseOnFullscreen;
   bool altNumberQuickLaunch;
+  bool globalHotkeysEnabled;
+  bool spotlightCommandSearch;
   bool showClockAndDesktopWidgets;
   bool showHardwareTelemetryWidgets;
   bool showExtraSystemWidgets;
@@ -119,6 +121,8 @@ class DockSettings {
     this.autoEcoOnBattery = true,
     this.autoPauseOnFullscreen = true,
     this.altNumberQuickLaunch = true,
+    this.globalHotkeysEnabled = true,
+    this.spotlightCommandSearch = true,
     this.showClockAndDesktopWidgets = true,
     this.showHardwareTelemetryWidgets = true,
     this.showExtraSystemWidgets = true,
@@ -188,6 +192,8 @@ class DockSettings {
         'autoEcoOnBattery': autoEcoOnBattery,
         'autoPauseOnFullscreen': autoPauseOnFullscreen,
         'altNumberQuickLaunch': altNumberQuickLaunch,
+        'globalHotkeysEnabled': globalHotkeysEnabled,
+        'spotlightCommandSearch': spotlightCommandSearch,
         'showClockAndDesktopWidgets': showClockAndDesktopWidgets,
         'showHardwareTelemetryWidgets': showHardwareTelemetryWidgets,
         'showExtraSystemWidgets': showExtraSystemWidgets,
@@ -254,6 +260,8 @@ class DockSettings {
       autoEcoOnBattery: m['autoEcoOnBattery'] as bool? ?? true,
       autoPauseOnFullscreen: m['autoPauseOnFullscreen'] as bool? ?? true,
       altNumberQuickLaunch: m['altNumberQuickLaunch'] as bool? ?? true,
+      globalHotkeysEnabled: m['globalHotkeysEnabled'] as bool? ?? true,
+      spotlightCommandSearch: m['spotlightCommandSearch'] as bool? ?? true,
       showClockAndDesktopWidgets: m['showClockAndDesktopWidgets'] as bool? ?? true,
       showHardwareTelemetryWidgets: m['showHardwareTelemetryWidgets'] as bool? ?? true,
       showExtraSystemWidgets: m['showExtraSystemWidgets'] as bool? ?? true,

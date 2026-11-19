@@ -257,6 +257,35 @@ class PortableStorage {
   }
 
 
+
+  static Future<bool> deleteProfileFile(String profilePath) async {
+    try {
+      final f = File(profilePath);
+      if (await f.exists()) {
+        await f.delete();
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  static Future<File?> renameProfileFile(String profilePath, String newBaseName) async {
+    try {
+      final cleaned = newBaseName.trim().replaceAll(RegExp(r'[\/:*?"<>|]'), '_');
+      if (cleaned.isEmpty) return null;
+      final f = File(profilePath);
+      if (!await f.exists()) return null;
+      final dirPath = f.parent.path;
+      final targetName = cleaned.toLowerCase().endsWith('.ini') ? cleaned : '$cleaned.ini';
+      final targetPath = '$dirPath${Platform.pathSeparator}$targetName';
+      if (targetPath.toLowerCase() == f.path.toLowerCase()) return f;
+      final renamed = await f.rename(targetPath);
+      return renamed;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<IniImportResult?> loadProfileFromFile(
     String profilePath, {
     required DockSettings baseSettings,

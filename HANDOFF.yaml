@@ -1,6 +1,6 @@
-version: 2.5.0
+version: 2.5.1
 status: active
 current_state:
-  - Удалены неиспользуемые объявления ExtractIconExW/DestroyIcon и пакетная фоновая обработка при импорте; обработка иконки выполняется строго один раз при первом добавлении элемента (_addFilePathToDock -> extractNativeIconBmp), исправлен порядок строк и альфа-канал 32-bit BMP.
+  - Добавлены: (1) реальная громкость системы Windows через winmm waveOutGetVolume, (2) регистрация глобального хоткея Ctrl+Alt+R через Win32 RegisterHotKey/UnregisterHotKey, (3) расширенный Spotlight-поиск (Ctrl+F) по названию и целевому пути, (4) переименование и удаление профилей из profiles/ в окне настроек.
 next_step:
   - Распаковать архив в локальный репозиторий и выполнить проверку на Windows (dart analyze / flutter build windows --release).

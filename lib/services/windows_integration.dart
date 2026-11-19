@@ -225,6 +225,15 @@ typedef _GetDIBitsDart = int Function(int hdc, int hbm, int start, int cLines, P
 typedef _DeleteObjectNative = Int32 Function(IntPtr ho);
 typedef _DeleteObjectDart = int Function(int ho);
 
+typedef _WaveOutGetVolumeNative = Int32 Function(IntPtr hwo, Pointer<Uint32> pdwVolume);
+typedef _WaveOutGetVolumeDart = int Function(int hwo, Pointer<Uint32> pdwVolume);
+
+typedef _RegisterHotKeyNative = Int32 Function(IntPtr hWnd, Int32 id, Uint32 fsModifiers, Uint32 vk);
+typedef _RegisterHotKeyDart = int Function(int hWnd, int id, int fsModifiers, int vk);
+
+typedef _UnregisterHotKeyNative = Int32 Function(IntPtr hWnd, Int32 id);
+typedef _UnregisterHotKeyDart = int Function(int hWnd, int id);
+
 class WindowsIntegration {
   static const String _runRegKey = r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run';
   static const String _appRegName = 'RocketDockPortable';
@@ -255,6 +264,10 @@ class WindowsIntegration {
   static _ReleaseDCDart? _releaseDC;
   static _GetDIBitsDart? _getDIBits;
   static _DeleteObjectDart? _deleteObject;
+  static _WaveOutGetVolumeDart? _waveOutGetVolume;
+  static _RegisterHotKeyDart? _registerHotKey;
+  static _UnregisterHotKeyDart? _unregisterHotKey;
+  static bool _hotkeysRegistered = false;
 
   static int windowScanCount = 0;
   static int lastWindowScanMicros = 0;
@@ -298,6 +311,12 @@ class WindowsIntegration {
         _getIconInfo = _user32!.lookupFunction<_GetIconInfoNative, _GetIconInfoDart>('GetIconInfo');
         _getDC = _user32!.lookupFunction<_GetDCNative, _GetDCDart>('GetDC');
         _releaseDC = _user32!.lookupFunction<_ReleaseDCNative, _ReleaseDCDart>('ReleaseDC');
+        _registerHotKey = _user32!.lookupFunction<_RegisterHotKeyNative, _RegisterHotKeyDart>('RegisterHotKey');
+        _unregisterHotKey = _user32!.lookupFunction<_UnregisterHotKeyNative, _UnregisterHotKeyDart>('UnregisterHotKey');
+      } catch (_) {}
+      try {
+        final winmm = DynamicLibrary.open('winmm.dll');
+        _waveOutGetVolume = winmm.lookupFunction<_WaveOutGetVolumeNative, _WaveOutGetVolumeDart>('waveOutGetVolume');
       } catch (_) {}
       try {
         final gdi32 = DynamicLibrary.open('gdi32.dll');
@@ -722,6 +741,50 @@ class WindowsIntegration {
       calloc.free(bih);
     }
   }
+
+
+  /// Returns real Windows system wave output volume (0..100) via winmm waveOutGetVolume
+  static int getSystemVolumePercent() {
+    if (!Platform.isWindows || !_ensureFfi() || _waveOutGetVolume == null) return 65;
+    final volPtr = calloc<Uint32>();
+    try {
+      if (_waveOutGetVolume!(0, volPtr) == 0) {
+        final raw = volPtr.value;
+        final left = raw & 0xFFFF;
+        final right = (raw >> 16) & 0xFFFF;
+        final avg = ((left + right) * 0.5) / 65535.0 * 100.0;
+        return avg.round().clamp(0, 100);
+      }
+    } catch (_) {
+    } finally {
+      calloc.free(volPtr);
+    }
+    return 65;
+  }
+
+  /// Registers global Ctrl+Alt+R hotkey (MOD_CONTROL=0x2 | MOD_ALT=0x1, VK_R=0x52)
+  static bool registerGlobalToggleHotkey() {
+    if (!Platform.isWindows || !_ensureFfi() || _registerHotKey == null) return false;
+    if (_hotkeysRegistered) return true;
+    try {
+      final ok = _registerHotKey!(0, 9001, 0x0002 | 0x0001, 0x52) != 0;
+      _hotkeysRegistered = ok;
+      return ok;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static void unregisterGlobalToggleHotkey() {
+    if (!Platform.isWindows || !_ensureFfi() || _unregisterHotKey == null) return;
+    if (!_hotkeysRegistered) return;
+    try {
+      _unregisterHotKey!(0, 9001);
+    } catch (_) {}
+    _hotkeysRegistered = false;
+  }
+
+  static bool get isGlobalHotkeyRegistered => _hotkeysRegistered;
 
   static List<int> _u16(int v) => [v & 0xFF, (v >> 8) & 0xFF];
   static List<int> _u32(int v) => [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF];

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +15,9 @@ class RocketDockSettingsDialog extends StatefulWidget {
   final Future<void> Function()? onSaveNamedProfile;
   final String lastDebugLog;
   final VoidCallback? onClearDebugLog;
+  final List<File> profiles;
+  final Future<void> Function(String profilePath)? onDeleteProfile;
+  final Future<void> Function(String profilePath, String newName)? onRenameProfile;
   final String Function()? onCollectDiagnostics;
   final VoidCallback? onTrimMemoryNow;
   final Future<String> Function()? onCleanDiskIconCache;
@@ -28,6 +32,9 @@ class RocketDockSettingsDialog extends StatefulWidget {
     this.onSaveNamedProfile,
     this.lastDebugLog = '',
     this.onClearDebugLog,
+    this.profiles = const [],
+    this.onDeleteProfile,
+    this.onRenameProfile,
     this.onCollectDiagnostics,
     this.onTrimMemoryNow,
     this.onCleanDiskIconCache,
@@ -591,6 +598,56 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
             (v) => setState(() => _draft.minimizeToTrayOnClose = v),
           ),
         ], header: 'Система и портативность'),
+        if (widget.profiles.isNotEmpty)
+          _macGroupCard(
+            widget.profiles.map((pf) {
+              final pName = pf.path.split(Platform.pathSeparator).last.replaceAll(RegExp(r'\.ini\$', caseSensitive: false), '');
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                child: Row(
+                  children: [
+                    const Icon(Icons.layers_rounded, size: 15, color: Color(0xFF64D2FF)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(pName, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12.5)),
+                    ),
+                    if (widget.onRenameProfile != null)
+                      _macSecondaryButton('Переименовать', () async {
+                        final ctrl = TextEditingController(text: pName);
+                        final newName = await showDialog<String>(
+                          context: context,
+                          builder: (dCtx) => AlertDialog(
+                            backgroundColor: const Color(0xFF26262C),
+                            title: const Text('Имя профиля', style: TextStyle(color: Colors.white, fontSize: 15)),
+                            content: TextField(
+                              controller: ctrl,
+                              autofocus: true,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(dCtx, null), child: const Text('Отмена')),
+                              ElevatedButton(onPressed: () => Navigator.pop(dCtx, ctrl.text), child: const Text('OK')),
+                            ],
+                          ),
+                        );
+                        if (newName != null && newName.trim().isNotEmpty) {
+                          await widget.onRenameProfile!(pf.path, newName.trim());
+                          setState(() {});
+                        }
+                      }),
+                    if (widget.onDeleteProfile != null) ...[
+                      const SizedBox(width: 6),
+                      _macSecondaryButton('Удалить', () async {
+                        await widget.onDeleteProfile!(pf.path);
+                        setState(() {});
+                      }),
+                    ],
+                  ],
+                ),
+              );
+            }).toList(),
+            header: 'Сохранённые профили (profiles/)',
+          ),
         _macGroupCard([
           _macSwitchRow(
             'Закрепить значки (защита от случайных нажатий и сдвига)',
@@ -651,6 +708,18 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
             _draft.autoPauseOnFullscreen,
             (v) => setState(() => _draft.autoPauseOnFullscreen = v),
             subtitle: 'Приостанавливает фоновые опросы, когда активное окно развёрнуто на весь экран',
+          ),
+          _macSwitchRow(
+            'Глобальный хоткей Ctrl+Alt+R (Win32)',
+            _draft.globalHotkeysEnabled,
+            (v) => setState(() => _draft.globalHotkeysEnabled = v),
+            subtitle: 'Регистрирует системный хоткей переключения панели',
+          ),
+          _macSwitchRow(
+            'Spotlight-поиск по названию и пути (Ctrl+F)',
+            _draft.spotlightCommandSearch,
+            (v) => setState(() => _draft.spotlightCommandSearch = v),
+            subtitle: 'Ищет также по целевому пути и команде запуска',
           ),
           _macSwitchRow(
             'Быстрый запуск значков по Alt + 1..9',
@@ -1093,7 +1162,7 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
                     children: [
                       Text('RocketDock Portable macOS Edition', style: TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700)),
                       SizedBox(height: 3),
-                      Text('Версия 2.4.8 • Win32 FFI Multi-Monitor Eco Engine', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
+                      Text('Версия 2.5.1 • Win32 FFI Audio & Profiles Engine', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
                       SizedBox(height: 3),
                       Text('Чёткие иконки • 2D-наведение по рядам • Импорт Settings.ini', style: TextStyle(color: Colors.white60, fontSize: 11.5)),
                     ],
