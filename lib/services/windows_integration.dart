@@ -44,6 +44,27 @@ typedef _ShowWindowDart = int Function(int hwnd, int nCmdShow);
 typedef _IsIconicNative = Int32 Function(IntPtr hwnd);
 typedef _IsIconicDart = int Function(int hwnd);
 
+typedef _PrivateExtractIconsWNative = Uint32 Function(
+  Pointer<Utf16> szFileName,
+  Int32 nIconIndex,
+  Int32 cxIcon,
+  Int32 cyIcon,
+  Pointer<IntPtr> phicon,
+  Pointer<Uint32> piconid,
+  Uint32 nIcons,
+  Uint32 flags,
+);
+typedef _PrivateExtractIconsWDart = int Function(
+  Pointer<Utf16> szFileName,
+  int nIconIndex,
+  int cxIcon,
+  int cyIcon,
+  Pointer<IntPtr> phicon,
+  Pointer<Uint32> piconid,
+  int nIcons,
+  int flags,
+);
+
 typedef _ExtractIconExWNative = Uint32 Function(
   Pointer<Utf16> lpszFile,
   Int32 nIconIndex,
@@ -304,6 +325,7 @@ class WindowsIntegration {
   static _IsIconicDart? _isIconic;
   static _DestroyIconDart? _destroyIcon;
   static _ExtractIconExWDart? _extractIconExW;
+  static _PrivateExtractIconsWDart? _privateExtractIconsW;
   static _GetCurrentProcessDart? _getCurrentProcess;
   static _SetProcessWorkingSetSizeDart? _setProcessWorkingSetSize;
   static _GetProcessMemoryInfoDart? _getProcessMemoryInfo;
@@ -362,6 +384,9 @@ class WindowsIntegration {
       _showWindow = _user32!.lookupFunction<_ShowWindowNative, _ShowWindowDart>('ShowWindow');
       _isIconic = _user32!.lookupFunction<_IsIconicNative, _IsIconicDart>('IsIconic');
       _destroyIcon = _user32!.lookupFunction<_DestroyIconNative, _DestroyIconDart>('DestroyIcon');
+      try {
+        _privateExtractIconsW = _user32!.lookupFunction<_PrivateExtractIconsWNative, _PrivateExtractIconsWDart>('PrivateExtractIconsW');
+      } catch (_) {}
       try {
         final shell32 = DynamicLibrary.open('shell32.dll');
         _extractIconExW = shell32.lookupFunction<_ExtractIconExWNative, _ExtractIconExWDart>('ExtractIconExW');
@@ -720,7 +745,7 @@ class WindowsIntegration {
     final sw = Stopwatch()..start();
     final cacheDir = PortableStorage.iconsCacheDir;
     final hash = _stableHash(filePath.toLowerCase());
-    final outPath = '${cacheDir.path}${Platform.pathSeparator}icon_v3_${hash}_i${safeIdx}.png';
+    final outPath = '${cacheDir.path}${Platform.pathSeparator}icon_v4_${hash}_i${safeIdx}.png';
     if (File(outPath).existsSync()) {
       dbg.writeln('hit disk cache: $outPath');
       lastIconDebugTrace = dbg.toString().trimRight();
@@ -736,7 +761,22 @@ class WindowsIntegration {
     int hdc = 0;
 
     try {
-      if (_extractIconExW != null) {
+      // High-resolution (256px) icon first; falls back to classic 32px extraction below
+      if (_privateExtractIconsW != null) {
+        final hPtr = calloc<IntPtr>();
+        final idPtr = calloc<Uint32>();
+        try {
+          final n = _privateExtractIconsW!(pathPtr, safeIdx, 256, 256, hPtr, idPtr, 1, 0);
+          if (n != 0 && n != 0xFFFFFFFF && hPtr.value != 0) hIcon = hPtr.value;
+          dbg.writeln('PrivateExtractIconsW(256): n=$n hIcon=$hIcon');
+        } catch (e) {
+          dbg.writeln('PrivateExtractIconsW exception: $e');
+        } finally {
+          calloc.free(hPtr);
+          calloc.free(idPtr);
+        }
+      }
+      if (hIcon == 0 && _extractIconExW != null) {
         final largePtr = calloc<IntPtr>();
         final smallPtr = calloc<IntPtr>();
         try {

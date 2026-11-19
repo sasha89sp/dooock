@@ -680,7 +680,7 @@ class _DockScreenState extends State<DockScreen>
   Future<void> _initSystemTray() async {
     try {
       await trayManager.setIcon(Platform.isWindows ? 'assets/app_icon.ico' : 'assets/app_icon.png');
-      await trayManager.setToolTip('RocketDock Portable macOS Edition');
+      await trayManager.setToolTip('RocketDock Portable');
       final Menu menu = Menu(
         items: [
           MenuItem(key: 'show', label: 'Показать панель'),
@@ -993,16 +993,31 @@ class _DockScreenState extends State<DockScreen>
     _targetPointerLocal = null;
     _clearImageCache();
     try {
+      // Hide the window while it jumps between dock and dialog sizes to avoid visible flicker
+      try {
+        await windowManager.setOpacity(0.0);
+      } catch (_) {}
       await windowManager.setAlwaysOnTop(false);
       await windowManager.setSize(const Size(780, 620));
       await windowManager.setAlignment(Alignment.center);
       await windowManager.show();
       await windowManager.focus();
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      try {
+        await windowManager.setOpacity(1.0);
+      } catch (_) {}
       return await showDialogFn();
     } finally {
       _isDialogOpen = false;
+      try {
+        await windowManager.setOpacity(0.0);
+      } catch (_) {}
       await _warmUpIconCache();
       await _applyWindowProperties();
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      try {
+        await windowManager.setOpacity(1.0);
+      } catch (_) {}
     }
   }
 
@@ -1411,7 +1426,7 @@ class _DockScreenState extends State<DockScreen>
         if (item != null && !item.isSeparator && item.targetPath.isNotEmpty)
           macItem('launch', 'Открыть', textColor: const Color(0xFF64D2FF), icon: Icons.play_arrow_rounded),
         if (item != null && !item.isSeparator && item.targetPath.contains(r'\'))
-          macItem('reveal', 'Показать в Finder / Проводнике', icon: Icons.folder_open_rounded),
+          macItem('reveal', 'Показать в Проводнике', icon: Icons.folder_open_rounded),
         if (item != null && !item.isSeparator && item.targetPath.isNotEmpty)
           macItem('copy_path', 'Копировать путь', icon: Icons.copy_rounded),
         if (item != null && !item.isSeparator && item.workingDirectory.isNotEmpty)
@@ -2310,25 +2325,17 @@ class _DockScreenState extends State<DockScreen>
     final iconKey = _resolveEnvPath(item.customIconPath);
     final cachedProvider = iconKey.isNotEmpty ? _imageCache[iconKey] : null;
     if (cachedProvider != null) {
-      return Container(
+      // Classic RocketDock look: icon as is — no rounded clipping, no box shadow under transparent pixels
+      return SizedBox(
         width: size,
         height: size,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(size * 0.225),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.28), blurRadius: 5, offset: const Offset(0, 2.5)),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(size * 0.225),
-          child: Image(
-            image: cachedProvider,
-            fit: BoxFit.contain,
-            isAntiAlias: true,
-            filterQuality: _settings.filterQuality,
-            gaplessPlayback: true,
-            errorBuilder: (_, __, ___) => _buildFallbackSquircle(item, size),
-          ),
+        child: Image(
+          image: cachedProvider,
+          fit: BoxFit.contain,
+          isAntiAlias: true,
+          filterQuality: _settings.filterQuality,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => _buildFallbackSquircle(item, size),
         ),
       );
     }
@@ -2346,8 +2353,25 @@ class _DockScreenState extends State<DockScreen>
         border: Border.all(color: Colors.white.withOpacity(0.28), width: 0.8),
       ),
       alignment: Alignment.center,
-      child: Icon(Icons.apps_rounded, color: Colors.white70, size: size * 0.52),
+      child: item.isFolderStack
+          ? Icon(Icons.folder_rounded, color: Colors.white70, size: size * 0.52)
+          : Text(
+              _fallbackLetter(item),
+              maxLines: 1,
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: size * 0.46,
+                fontWeight: FontWeight.w600,
+                decoration: TextDecoration.none,
+              ),
+            ),
     );
+  }
+
+  String _fallbackLetter(DockItemData item) {
+    final title = item.title.trim();
+    if (title.isEmpty) return '?';
+    return String.fromCharCode(title.runes.first).toUpperCase();
   }
 
   int _quickLaunchSlotForItem(DockItemData target) {
@@ -2450,7 +2474,8 @@ class _DockScreenState extends State<DockScreen>
               decoration: TextDecoration.none,
               foreground: Paint()
                 ..style = PaintingStyle.stroke
-                ..strokeWidth = 2.6
+                ..strokeWidth = (_settings.labelFontSize * 0.2).clamp(1.6, 3.2).toDouble()
+                ..strokeJoin = StrokeJoin.round
                 ..color = outlineColor,
             ),
           ),

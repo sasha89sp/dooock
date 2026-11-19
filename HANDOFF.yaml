@@ -1,7 +1,9 @@
-version: 2.6.7
+version: 2.6.8
 status: active
 current_state:
-  - Иконки: WindowsIntegration.extractNativeIcon (бывш. extractNativeIconBmp) пишет PNG с корректной альфой (для старых иконок без альфы берётся AND-маска) вместо BMP BI_RGB; кэш icon_v3_*.png со стабильным FNV-хэшем; старые icons_cache/*.bmp считаются устаревшими и переизвлекаются.
-  - Изменения не компилировались и не запускались (в среде нет Flutter/Dart SDK).
+  - Иконки: extractNativeIcon пишет PNG с корректной альфой (AND-маска для старых иконок), сначала PrivateExtractIconsW 256px, затем ExtractIconExW/SHGetFileInfoW; кэш icon_v4_*.png; старые icons_cache/*.bmp переизвлекаются.
+  - Визуал: иконки без squircle-обрезки и тени; заглушка — первая буква названия; обводка подписи со скруглёнными углами и толщиной от размера шрифта; убраны macOS-надписи (Finder, Edition); диалоги открываются без мигания окна (setOpacity).
+  - Не изменено: прозрачность окна (в архиве нет windows/ runner), тема по умолчанию 'macOS Sonoma Glass' (ключ в сохранённых настройках).
+  - Ничего не компилировалось и не запускалось (в среде нет Flutter/Dart SDK).
 next_step:
-  - На Windows выполнить dart analyze, flutter test, flutter build windows --release; проверить иконки (в т.ч. старые .exe без альфы) и при необходимости нажать «Переизвлечь иконки» в настройках.
+  - На Windows: dart analyze, flutter test, flutter build windows --release; проверить иконки, фон окна за доком (чёрный/белый?), открытие настроек.
