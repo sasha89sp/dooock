@@ -47,7 +47,7 @@ class RocketDockApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'RocketDock Portable macOS Edition',
+      title: 'рокет док',
       theme: ThemeData.dark(useMaterial3: true),
       home: const DockScreen(),
     );
@@ -388,7 +388,19 @@ class _DockScreenState extends State<DockScreen>
   }
 
   Future<void> _pollNativeFfiTelemetry() async {
-    if (!Platform.isWindows || !mounted || _isAutoHidden) return;
+    if (!Platform.isWindows || !mounted) return;
+
+    if (_settings.globalHotkeysEnabled && WindowsIntegration.pollGlobalToggleHotkeyTriggered()) {
+      final vis = await windowManager.isVisible();
+      if (vis) {
+        await _hideToTray();
+      } else {
+        await _restoreFromTray();
+      }
+      return;
+    }
+
+    if (_isAutoHidden) return;
 
     final prevEco = _isEffectiveEcoMode;
     if (_settings.autoEcoOnBattery) {
@@ -527,6 +539,14 @@ class _DockScreenState extends State<DockScreen>
           MenuItem(key: 'pin_edge', label: 'Закрепить к краю экрана'),
           MenuItem(key: 'lock_icons', label: 'Закрепить значки'),
           MenuItem(key: 'open_portable', label: 'Открыть папку с Settings.ini'),
+          if (_availableProfiles.isNotEmpty) ...[
+            MenuItem.separator(),
+            for (int i = 0; i < _availableProfiles.length && i < 5; i++)
+              MenuItem(
+                key: 'tray_profile_$i',
+                label: 'Профиль: ${_availableProfiles[i].path.split(Platform.pathSeparator).last.replaceAll(RegExp(r'\.ini\$', caseSensitive: false), '')}',
+              ),
+          ],
           MenuItem.separator(),
           MenuItem(key: 'exit', label: 'Выход'),
         ],
@@ -575,6 +595,28 @@ class _DockScreenState extends State<DockScreen>
       await PortableStorage.save(_settings, items);
     } else if (menuItem.key == 'open_portable') {
       _launchTargetNonBlocking(PortableStorage.appDir);
+    } else if (menuItem.key != null && menuItem.key!.startsWith('tray_profile_')) {
+      final pIdx = int.tryParse(menuItem.key!.substring('tray_profile_'.length));
+      if (pIdx != null && pIdx >= 0 && pIdx < _availableProfiles.length) {
+        await _restoreFromTray();
+        final loadedProf = await PortableStorage.loadProfileFromFile(
+          _availableProfiles[pIdx].path,
+          baseSettings: _settings,
+        );
+        if (loadedProf != null && mounted) {
+          setState(() {
+            _settings = loadedProf.settings;
+            if (loadedProf.items.isNotEmpty) items = loadedProf.items;
+            _activeStackIndex = null;
+          });
+          _playSound();
+          _clearImageCache();
+          await _warmUpIconCache();
+          await PortableStorage.save(_settings, items);
+          await _applyWindowProperties();
+          _startTimers();
+        }
+      }
     }
   }
 
@@ -598,6 +640,7 @@ class _DockScreenState extends State<DockScreen>
       await PortableStorage.save(_settings, items);
     }
     _availableProfiles = await PortableStorage.listSavedProfiles();
+    unawaited(_initSystemTray());
     await _warmUpIconCache();
     await _applyWindowProperties();
     _startTimers();
@@ -1233,6 +1276,10 @@ class _DockScreenState extends State<DockScreen>
           macItem('launch', 'Открыть', textColor: const Color(0xFF64D2FF), icon: Icons.play_arrow_rounded),
         if (item != null && !item.isSeparator && item.targetPath.contains(r'\'))
           macItem('reveal', 'Показать в Finder / Проводнике', icon: Icons.folder_open_rounded),
+        if (item != null && !item.isSeparator && item.targetPath.isNotEmpty)
+          macItem('copy_path', 'Копировать путь', icon: Icons.copy_rounded),
+        if (item != null && !item.isSeparator && item.workingDirectory.isNotEmpty)
+          macItem('open_workdir', 'Открыть рабочую папку', icon: Icons.work_outline_rounded),
         if (item != null && !item.isSeparator)
           macItem('edit', 'Свойства...', icon: Icons.edit_rounded),
         if (item != null && !item.isSeparator)
@@ -1286,6 +1333,10 @@ class _DockScreenState extends State<DockScreen>
         _launchTargetNonBlocking(item.targetPath, itemId: item.id, displayTitle: item.title, arguments: item.arguments, workingDirectory: item.workingDirectory);
       } else if (value == 'reveal' && item != null && Platform.isWindows) {
         unawaited(Process.start('explorer.exe', ['/select,${item.targetPath}'], mode: ProcessStartMode.detached));
+      } else if (value == 'copy_path' && item != null) {
+        await Clipboard.setData(ClipboardData(text: item.targetPath));
+      } else if (value == 'open_workdir' && item != null && item.workingDirectory.isNotEmpty) {
+        _launchTargetNonBlocking(item.workingDirectory, displayTitle: item.title);
       } else if (value == 'edit' && itemIndex != null) {
         await _editItemDialog(itemIndex);
       } else if (value == 'change_icon' && itemIndex != null) {
@@ -2180,6 +2231,18 @@ class _DockScreenState extends State<DockScreen>
     );
   }
 
+  int _quickLaunchSlotForItem(DockItemData target) {
+    if (!_settings.altNumberQuickLaunch || !_settings.showQuickLaunchBadges) return -1;
+    if (target.isSeparator || target.isHardwareWidget || target.isWidgetPlugin || target.isPowerAction) {
+      return -1;
+    }
+    final launchable = _getFilteredItems()
+        .where((it) => !it.isSeparator && !it.isHardwareWidget && !it.isWidgetPlugin && !it.isPowerAction)
+        .toList();
+    final idx = launchable.indexOf(target);
+    return (idx >= 0 && idx < 9) ? idx + 1 : -1;
+  }
+
   Widget _buildLiveBadge(DockItemData item) {
     if (item.isHardwareWidget) {
       if (item.hardwareType == 'ram') {
@@ -2479,10 +2542,17 @@ class _DockScreenState extends State<DockScreen>
         !item.isWidgetPlugin &&
         !item.isPowerAction;
 
+    final slotBadge = _quickLaunchSlotForItem(item);
     Widget graphic = Stack(
       alignment: Alignment.center,
       children: [
         _buildMacSquircleIcon(item, currentSize),
+        if (slotBadge > 0)
+          Positioned(
+            top: 2,
+            left: 2,
+            child: _badgePill('$slotBadge', const Color(0xFF64D2FF)),
+          ),
         if (item.isHardwareWidget || item.isWidgetPlugin)
           Positioned(
             bottom: 2.5,

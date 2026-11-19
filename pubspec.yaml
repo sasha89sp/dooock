@@ -1,7 +1,7 @@
-name: rocketdock_windows
-description: "RocketDock Portable macOS Edition v2.3.2 — Fixed glyph rendering (standard Material/Cupertino glyphs), 2D pointer proximity zoom in multi-row grids so only one icon per row is highlighted, classic RocketDock 1.3.5 Settings.ini import, and zero-lag Win32 FFI telemetry."
+name: roket_dok
+description: "рокет док — RocketDock Portable macOS Edition v2.5.3 — Fixed glyph rendering (standard Material/Cupertino glyphs), 2D pointer proximity zoom in multi-row grids so only one icon per row is highlighted, classic RocketDock 1.3.5 Settings.ini import, and zero-lag Win32 FFI telemetry."
 publish_to: 'none'
-version: 2.5.2+1
+version: 2.5.3+1
 
 environment:
   sdk: '>=3.5.0 <4.0.0'

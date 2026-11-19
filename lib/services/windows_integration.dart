@@ -237,6 +237,41 @@ typedef _RegisterHotKeyDart = int Function(int hWnd, int id, int fsModifiers, in
 typedef _UnregisterHotKeyNative = Int32 Function(IntPtr hWnd, Int32 id);
 typedef _UnregisterHotKeyDart = int Function(int hWnd, int id);
 
+final class _MsgStruct extends Struct {
+  @IntPtr()
+  external int hwnd;
+  @Uint32()
+  external int message;
+  @IntPtr()
+  external int wParam;
+  @IntPtr()
+  external int lParam;
+  @Uint32()
+  external int time;
+  @Int32()
+  external int ptX;
+  @Int32()
+  external int ptY;
+}
+
+typedef _PeekMessageWNative = Int32 Function(
+  Pointer<_MsgStruct> lpMsg,
+  IntPtr hWnd,
+  Uint32 wMsgFilterMin,
+  Uint32 wMsgFilterMax,
+  Uint32 wRemoveMsg,
+);
+typedef _PeekMessageWDart = int Function(
+  Pointer<_MsgStruct> lpMsg,
+  int hWnd,
+  int wMsgFilterMin,
+  int wMsgFilterMax,
+  int wRemoveMsg,
+);
+
+typedef _GetAsyncKeyStateNative = Int16 Function(Int32 vKey);
+typedef _GetAsyncKeyStateDart = int Function(int vKey);
+
 class WindowsIntegration {
   static const String _runRegKey = r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run';
   static const String _appRegName = 'RocketDockPortable';
@@ -272,6 +307,9 @@ class WindowsIntegration {
   static _RegisterHotKeyDart? _registerHotKey;
   static _UnregisterHotKeyDart? _unregisterHotKey;
   static bool _hotkeysRegistered = false;
+  static _PeekMessageWDart? _peekMessageW;
+  static _GetAsyncKeyStateDart? _getAsyncKeyState;
+  static DateTime _lastGlobalHotkeyFire = DateTime.fromMillisecondsSinceEpoch(0);
 
   static int windowScanCount = 0;
   static int lastWindowScanMicros = 0;
@@ -318,6 +356,8 @@ class WindowsIntegration {
         _releaseDC = _user32!.lookupFunction<_ReleaseDCNative, _ReleaseDCDart>('ReleaseDC');
         _registerHotKey = _user32!.lookupFunction<_RegisterHotKeyNative, _RegisterHotKeyDart>('RegisterHotKey');
         _unregisterHotKey = _user32!.lookupFunction<_UnregisterHotKeyNative, _UnregisterHotKeyDart>('UnregisterHotKey');
+        _peekMessageW = _user32!.lookupFunction<_PeekMessageWNative, _PeekMessageWDart>('PeekMessageW');
+        _getAsyncKeyState = _user32!.lookupFunction<_GetAsyncKeyStateNative, _GetAsyncKeyStateDart>('GetAsyncKeyState');
       } catch (_) {}
       try {
         final winmm = DynamicLibrary.open('winmm.dll');
@@ -787,6 +827,46 @@ class WindowsIntegration {
       _unregisterHotKey!(0, 9001);
     } catch (_) {}
     _hotkeysRegistered = false;
+  }
+
+
+  /// Checks if global Ctrl+Alt+R hotkey fired via WM_HOTKEY or async key state (debounced 400ms)
+  static bool pollGlobalToggleHotkeyTriggered() {
+    if (!Platform.isWindows || !_ensureFfi() || !_hotkeysRegistered) return false;
+    final now = DateTime.now();
+    if (now.difference(_lastGlobalHotkeyFire).inMilliseconds < 400) return false;
+
+    bool fired = false;
+    if (_peekMessageW != null) {
+      final msg = calloc<_MsgStruct>();
+      try {
+        // WM_HOTKEY = 0x0312, PM_REMOVE = 0x0001
+        while (_peekMessageW!(msg, 0, 0x0312, 0x0312, 0x0001) != 0) {
+          if (msg.ref.wParam == 9001) {
+            fired = true;
+          }
+        }
+      } catch (_) {
+      } finally {
+        calloc.free(msg);
+      }
+    }
+
+    if (!fired && _getAsyncKeyState != null) {
+      try {
+        final ctrlDown = (_getAsyncKeyState!(0x11) & 0x8000) != 0;
+        final altDown = (_getAsyncKeyState!(0x12) & 0x8000) != 0;
+        final rDown = (_getAsyncKeyState!(0x52) & 0x8000) != 0;
+        if (ctrlDown && altDown && rDown) {
+          fired = true;
+        }
+      } catch (_) {}
+    }
+
+    if (fired) {
+      _lastGlobalHotkeyFire = now;
+    }
+    return fired;
   }
 
   static bool get isGlobalHotkeyRegistered => _hotkeysRegistered;

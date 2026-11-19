@@ -1,6 +1,6 @@
-version: 2.5.2
+version: 2.5.3
 status: active
 current_state:
-  - Восстановлены объявление и привязка _destroyIcon из user32.dll в lib/services/windows_integration.dart для освобождения дескриптора hIcon в extractNativeIconBmp.
+  - Добавлены 5 функций: (1) обработка глобального Ctrl+Alt+R через PeekMessageW/GetAsyncKeyState, (2) бейджи 1..9 на первых 9 значках быстрого запуска (showQuickLaunchBadges), (3) профили из profiles/ в меню системного трея, (4) пункты «Копировать путь» и «Открыть рабочую папку» в меню ПКМ, (5) пресет «Минимум ОЗУ» в настройках.
 next_step:
-  - Распаковать архив в локальный репозиторий и выполнить проверку на Windows (dart analyze / flutter build windows --release).
+  - Распаковать архив в локальный репозиторий и выполнить проверку на Windows (dart analyze / flutter test / flutter build windows --release).

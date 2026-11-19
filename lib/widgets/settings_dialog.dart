@@ -691,6 +691,33 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
             _draft.activateRunningInstance,
             (v) => setState(() => _draft.activateRunningInstance = v),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Профиль «Минимум ОЗУ»', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      Text('Включает экономичный режим, отключает лишние виджеты и сжимает Working Set', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                    ],
+                  ),
+                ),
+                _macSecondaryButton('Минимум ОЗУ', () {
+                  setState(() {
+                    _draft.ecoDesktopMode = true;
+                    _draft.showClockAndDesktopWidgets = false;
+                    _draft.showHardwareTelemetryWidgets = false;
+                    _draft.showExtraSystemWidgets = false;
+                    _draft.hoverZoomMode = HoverZoomMode.none;
+                    _draft.clickEffect = ClickAttentionEffect.none;
+                  });
+                  widget.onTrimMemoryNow?.call();
+                }),
+              ],
+            ),
+          ),
           _macSwitchRow(
             'Экономичный режим (без датчиков, часов и фонового сканирования)',
             _draft.ecoDesktopMode,
@@ -720,6 +747,12 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
             _draft.spotlightCommandSearch,
             (v) => setState(() => _draft.spotlightCommandSearch = v),
             subtitle: 'Ищет также по целевому пути и команде запуска',
+          ),
+          _macSwitchRow(
+            'Показывать номера 1..9 на значках быстрого запуска',
+            _draft.showQuickLaunchBadges,
+            (v) => setState(() => _draft.showQuickLaunchBadges = v),
+            subtitle: 'Подсказка номера слота для Alt + 1..9',
           ),
           _macSwitchRow(
             'Быстрый запуск значков по Alt + 1..9',
@@ -1162,7 +1195,7 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
                     children: [
                       Text('RocketDock Portable macOS Edition', style: TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700)),
                       SizedBox(height: 3),
-                      Text('Версия 2.5.1 • Win32 FFI Audio & Profiles Engine', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
+                      Text('Версия 2.5.3 • Win32 FFI Global Hotkey & Tray Profiles', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
                       SizedBox(height: 3),
                       Text('Чёткие иконки • 2D-наведение по рядам • Импорт Settings.ini', style: TextStyle(color: Colors.white60, fontSize: 11.5)),
                     ],

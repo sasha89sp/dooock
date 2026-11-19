@@ -1,3 +1,3 @@
-# RocketDock Portable macOS Edition for Windows (v2.3.5)
+# рокет док (`roket_dok`)
 
-Stops animation ticker when idle, caps image cache size with LRU eviction, and adds smooth animated separator drag-and-drop.
+Портативная панель запуска приложений для Windows desktop на базе Flutter / Dart и Win32 FFI (`v2.5.3`).
