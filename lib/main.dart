@@ -277,19 +277,19 @@ class _DockScreenState extends State<DockScreen>
         item.customIconPath = '';
       }
 
-      final target = _resolveEnvPath(item.targetPath);
-      if (Platform.isWindows && target.isNotEmpty) {
+      final srcPath = prevPath.isNotEmpty ? prevPath : _resolveEnvPath(item.targetPath);
+      if (Platform.isWindows && srcPath.isNotEmpty) {
         _attemptedNativeIconIds.add(item.id);
-        final tLower = target.toLowerCase();
-        if (!tLower.startsWith('http://') &&
-            !tLower.startsWith('https://') &&
-            !tLower.startsWith('shell:') &&
-            !tLower.startsWith('ms-')) {
-          final effectiveTarget = _resolveEnvPath(
-            await WindowsIntegration.resolveShortcutTargetIfNeeded(target),
+        final sLower = srcPath.toLowerCase();
+        if (!sLower.startsWith('http://') &&
+            !sLower.startsWith('https://') &&
+            !sLower.startsWith('shell:') &&
+            !sLower.startsWith('ms-')) {
+          final effectiveSrc = _resolveEnvPath(
+            await WindowsIntegration.resolveShortcutTargetIfNeeded(srcPath),
           );
-          final outBmp = WindowsIntegration.extractNativeIconBmp(effectiveTarget) ??
-              WindowsIntegration.extractNativeIconBmp(target);
+          final outBmp = WindowsIntegration.extractNativeIconBmp(effectiveSrc, iconIndex: item.iconIndex) ??
+              WindowsIntegration.extractNativeIconBmp(srcPath, iconIndex: item.iconIndex);
           if (outBmp != null && await File(outBmp).exists()) {
             item.customIconPath = outBmp;
             extractedCount++;
@@ -316,22 +316,32 @@ class _DockScreenState extends State<DockScreen>
       }
       String path = _resolveEnvPath(item.customIconPath);
       final target = _resolveEnvPath(item.targetPath);
-      if (path.isEmpty &&
+      final lowerPath = path.toLowerCase();
+      final isDirectRaster = path.isNotEmpty &&
+          (lowerPath.endsWith('.png') ||
+              lowerPath.endsWith('.jpg') ||
+              lowerPath.endsWith('.jpeg') ||
+              lowerPath.endsWith('.bmp')) &&
+          File(path).existsSync();
+
+      if (!isDirectRaster &&
           Platform.isWindows &&
           _settings.autoExtractExeIcons &&
-          !_attemptedNativeIconIds.contains(item.id) &&
-          target.isNotEmpty) {
+          !_attemptedNativeIconIds.contains(item.id)) {
         _attemptedNativeIconIds.add(item.id);
-        final tLower = target.toLowerCase();
-        if (!tLower.startsWith('http://') &&
-            !tLower.startsWith('https://') &&
-            !tLower.startsWith('shell:') &&
-            !tLower.startsWith('ms-')) {
-          final effectiveTarget = _resolveEnvPath(
-            await WindowsIntegration.resolveShortcutTargetIfNeeded(target),
+        final sourceCandidate = path.isNotEmpty ? path : target;
+        final sLower = sourceCandidate.toLowerCase();
+        if (sourceCandidate.isNotEmpty &&
+            !sLower.startsWith('http://') &&
+            !sLower.startsWith('https://') &&
+            !sLower.startsWith('shell:') &&
+            !sLower.startsWith('ms-')) {
+          final effectiveSource = _resolveEnvPath(
+            await WindowsIntegration.resolveShortcutTargetIfNeeded(sourceCandidate),
           );
-          final extracted = WindowsIntegration.extractNativeIconBmp(effectiveTarget) ??
-              WindowsIntegration.extractNativeIconBmp(target);
+          final extracted = WindowsIntegration.extractNativeIconBmp(effectiveSource, iconIndex: item.iconIndex) ??
+              WindowsIntegration.extractNativeIconBmp(sourceCandidate, iconIndex: item.iconIndex) ??
+              (target.isNotEmpty ? WindowsIntegration.extractNativeIconBmp(target, iconIndex: item.iconIndex) : null);
           if (extracted != null) {
             item.customIconPath = extracted;
             path = extracted;

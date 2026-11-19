@@ -327,7 +327,7 @@ class PortableStorage {
       const encoder = JsonEncoder.withIndent('  ');
       await jsonFile.writeAsString(encoder.convert({
         'portable': true,
-        'version': '2.5.8',
+        'version': '2.5.9',
         'settings': settings.toMap(),
         'items': items.map((e) => e.toJson()).toList(),
       }));
@@ -665,8 +665,11 @@ class PortableStorage {
       }
 
       String cleanIconFile = rawFileName;
+      int parsedIconIdx = 0;
       final qIdx = cleanIconFile.indexOf('?');
       if (qIdx != -1) {
+        final idxPart = cleanIconFile.substring(qIdx + 1).trim();
+        parsedIconIdx = int.tryParse(idxPart) ?? 0;
         cleanIconFile = cleanIconFile.substring(0, qIdx).trim();
       }
 
@@ -693,21 +696,14 @@ class PortableStorage {
 
       String customImg = '';
       if (cleanIconFile.isNotEmpty) {
-        String candidate = cleanIconFile;
+        String candidate = _expandEnvVars(cleanIconFile);
         if (!candidate.contains(':') && !candidate.startsWith(r'\\') && iniDir.isNotEmpty) {
           final relCandidate = '$iniDir${Platform.pathSeparator}$candidate';
           if (File(relCandidate).existsSync()) {
             candidate = relCandidate;
           }
         }
-        final lowerImg = candidate.toLowerCase();
-        if ((lowerImg.endsWith('.png') ||
-                lowerImg.endsWith('.jpg') ||
-                lowerImg.endsWith('.jpeg') ||
-                lowerImg.endsWith('.bmp')) &&
-            File(candidate).existsSync()) {
-          customImg = candidate;
-        }
+        customImg = candidate;
       }
 
       result.add(DockItemData(
@@ -715,6 +711,7 @@ class PortableStorage {
         title: title,
         iconName: mappedIcon,
         customIconPath: customImg,
+        iconIndex: parsedIconIdx,
         targetPath: mappedTarget,
         arguments: rawArgs,
         workingDirectory: rawWorkDir,

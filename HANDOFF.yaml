@@ -1,6 +1,6 @@
-version: 2.5.8
+version: 2.5.9
 status: active
 current_state:
-  - Добавлено ручное повторное извлечение иконок из программ и ярлыков по кнопке «Переизвлечь из программ» в разделе настроек «Значки» (_reextractAllIconsManually), с очисткой старого кэша для обновляемых элементов и сохранением новых путей в конфиг.
+  - Реализован разбор индекса иконки (?N) из FileName при импорте классического RocketDock INI, учёт iconIndex в extractNativeIconBmp (ExtractIconExW) и ключе дискового кэша, а также сохранение извлечённых BMP в двухслойном кэше (диск + ОЗУ).
 next_step:
   - Распаковать архив в локальный репозиторий и выполнить проверку на Windows (dart analyze / flutter test / flutter build windows --release).

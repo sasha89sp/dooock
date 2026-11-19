@@ -280,6 +280,7 @@ class DockItemData {
   String title;
   String iconName;
   String customIconPath;
+  int iconIndex;
   String targetPath;
   String arguments;
   String workingDirectory;
@@ -299,6 +300,7 @@ class DockItemData {
     required this.iconName,
     required this.targetPath,
     this.customIconPath = '',
+    this.iconIndex = 0,
     this.arguments = '',
     this.workingDirectory = '',
     this.isRunning = false,
@@ -329,6 +331,7 @@ class DockItemData {
         'title': title,
         'iconName': iconName,
         'customIconPath': customIconPath,
+        'iconIndex': iconIndex,
         'targetPath': targetPath,
         'arguments': arguments,
         'workingDirectory': workingDirectory,
@@ -348,6 +351,7 @@ class DockItemData {
         title: json['title'] ?? 'App',
         iconName: json['iconName'] ?? 'custom',
         customIconPath: json['customIconPath'] ?? '',
+        iconIndex: (json['iconIndex'] as num?)?.toInt() ?? 0,
         targetPath: json['targetPath'] ?? '',
         arguments: json['arguments'] ?? '',
         workingDirectory: json['workingDirectory'] ?? '',

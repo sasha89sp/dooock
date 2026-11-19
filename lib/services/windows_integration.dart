@@ -689,15 +689,15 @@ class WindowsIntegration {
   }
 
   /// Pure Win32 FFI icon extractor (SHGetFileInfoW + GetDIBits -> 32-bit BGRA BMP, 0 PowerShell processes)
-  static String? extractNativeIconBmp(String filePath) {
+  static String? extractNativeIconBmp(String filePath, {int iconIndex = 0}) {
     if (!Platform.isWindows || !_ensureFfi()) return null;
-    if (_shGetFileInfoW == null || _getIconInfo == null || _getObjectW == null || _getDIBits == null || _getDC == null || _releaseDC == null) {
+    if (_getIconInfo == null || _getObjectW == null || _getDIBits == null || _getDC == null || _releaseDC == null) {
       return null;
     }
     final sw = Stopwatch()..start();
     final cacheDir = PortableStorage.iconsCacheDir;
     final hash = filePath.hashCode.abs().toString();
-    final outPath = '${cacheDir.path}${Platform.pathSeparator}icon_native_$hash.bmp';
+    final outPath = '${cacheDir.path}${Platform.pathSeparator}icon_native_${hash}_i${iconIndex.abs()}.bmp';
     if (File(outPath).existsSync()) return outPath;
 
     final pathPtr = filePath.toNativeUtf16();
@@ -709,16 +709,16 @@ class WindowsIntegration {
     int hdc = 0;
 
     try {
-      // SHGFI_ICON (0x100) | SHGFI_LARGEICON (0x0)
-      final res = _shGetFileInfoW != null
-          ? _shGetFileInfoW!(pathPtr, 0, shfi, sizeOf<_ShFileInfoW>(), 0x000000100)
-          : 0;
-      hIcon = res != 0 ? shfi.ref.hIcon : 0;
+      if (iconIndex == 0 && _shGetFileInfoW != null) {
+        // SHGFI_ICON (0x100) | SHGFI_LARGEICON (0x0)
+        final res = _shGetFileInfoW!(pathPtr, 0, shfi, sizeOf<_ShFileInfoW>(), 0x000000100);
+        hIcon = res != 0 ? shfi.ref.hIcon : 0;
+      }
       if (hIcon == 0 && _extractIconExW != null) {
         final largePtr = calloc<IntPtr>();
         final smallPtr = calloc<IntPtr>();
         try {
-          _extractIconExW!(pathPtr, 0, largePtr, smallPtr, 1);
+          _extractIconExW!(pathPtr, iconIndex, largePtr, smallPtr, 1);
           hIcon = largePtr.value != 0 ? largePtr.value : smallPtr.value;
           if (largePtr.value != 0 && hIcon != largePtr.value && _destroyIcon != null) {
             _destroyIcon!(largePtr.value);
