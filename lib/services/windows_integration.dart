@@ -44,6 +44,9 @@ typedef _ShowWindowDart = int Function(int hwnd, int nCmdShow);
 typedef _IsIconicNative = Int32 Function(IntPtr hwnd);
 typedef _IsIconicDart = int Function(int hwnd);
 
+typedef _DestroyIconNative = Int32 Function(IntPtr hIcon);
+typedef _DestroyIconDart = int Function(int hIcon);
+
 typedef _GetCurrentProcessNative = IntPtr Function();
 typedef _GetCurrentProcessDart = int Function();
 
@@ -249,6 +252,7 @@ class WindowsIntegration {
   static _SetForegroundWindowDart? _setForegroundWindow;
   static _ShowWindowDart? _showWindow;
   static _IsIconicDart? _isIconic;
+  static _DestroyIconDart? _destroyIcon;
   static _GetCurrentProcessDart? _getCurrentProcess;
   static _SetProcessWorkingSetSizeDart? _setProcessWorkingSetSize;
   static _GetProcessMemoryInfoDart? _getProcessMemoryInfo;
@@ -302,6 +306,7 @@ class WindowsIntegration {
       _setForegroundWindow = _user32!.lookupFunction<_SetForegroundWindowNative, _SetForegroundWindowDart>('SetForegroundWindow');
       _showWindow = _user32!.lookupFunction<_ShowWindowNative, _ShowWindowDart>('ShowWindow');
       _isIconic = _user32!.lookupFunction<_IsIconicNative, _IsIconicDart>('IsIconic');
+      _destroyIcon = _user32!.lookupFunction<_DestroyIconNative, _DestroyIconDart>('DestroyIcon');
       try {
         _enumDisplayMonitors = _user32!.lookupFunction<_EnumDisplayMonitorsNative, _EnumDisplayMonitorsDart>('EnumDisplayMonitors');
         _getMonitorInfoW = _user32!.lookupFunction<_GetMonitorInfoWNative, _GetMonitorInfoWDart>('GetMonitorInfoW');

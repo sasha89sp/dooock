@@ -1,6 +1,6 @@
-version: 2.5.1
+version: 2.5.2
 status: active
 current_state:
-  - Добавлены: (1) реальная громкость системы Windows через winmm waveOutGetVolume, (2) регистрация глобального хоткея Ctrl+Alt+R через Win32 RegisterHotKey/UnregisterHotKey, (3) расширенный Spotlight-поиск (Ctrl+F) по названию и целевому пути, (4) переименование и удаление профилей из profiles/ в окне настроек.
+  - Восстановлены объявление и привязка _destroyIcon из user32.dll в lib/services/windows_integration.dart для освобождения дескриптора hIcon в extractNativeIconBmp.
 next_step:
   - Распаковать архив в локальный репозиторий и выполнить проверку на Windows (dart analyze / flutter build windows --release).
