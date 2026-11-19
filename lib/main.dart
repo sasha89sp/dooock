@@ -240,11 +240,36 @@ class _DockScreenState extends State<DockScreen>
     }
   }
 
+  final Set<String> _attemptedNativeIconIds = {};
+
   Future<void> _warmUpIconCache() async {
     int warmed = 0;
+    bool updatedAnyPath = false;
     for (final item in items) {
       if (warmed >= _maxCachedIcons) break;
-      final path = item.customIconPath;
+      if (item.isSeparator || item.isHardwareWidget || item.isWidgetPlugin || item.isPowerAction) {
+        continue;
+      }
+      String path = item.customIconPath;
+      if (path.isEmpty &&
+          Platform.isWindows &&
+          _settings.autoExtractExeIcons &&
+          !_attemptedNativeIconIds.contains(item.id) &&
+          item.targetPath.isNotEmpty) {
+        _attemptedNativeIconIds.add(item.id);
+        final tLower = item.targetPath.toLowerCase();
+        if (!tLower.startsWith('http://') &&
+            !tLower.startsWith('https://') &&
+            !tLower.startsWith('shell:') &&
+            !tLower.startsWith('ms-')) {
+          final extracted = WindowsIntegration.extractNativeIconBmp(item.targetPath);
+          if (extracted != null) {
+            item.customIconPath = extracted;
+            path = extracted;
+            updatedAnyPath = true;
+          }
+        }
+      }
       if (path.isNotEmpty && !_imageCache.containsKey(path)) {
         final file = File(path);
         if (await file.exists()) {
@@ -252,6 +277,9 @@ class _DockScreenState extends State<DockScreen>
           warmed++;
         }
       }
+    }
+    if (updatedAnyPath) {
+      unawaited(PortableStorage.save(_settings, items));
     }
     if (mounted) _frameTick.value++;
     WindowsIntegration.trimProcessWorkingSet();
@@ -732,20 +760,6 @@ class _DockScreenState extends State<DockScreen>
     }
 
     if (result == null || !mounted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Не удалось прочитать файл Settings.ini'),
-            action: SnackBarAction(
-              label: 'Отладка',
-              onPressed: () => _showImportDebugDialog(
-                'Отладка ошибки импорта INI',
-                debugText.isEmpty ? 'Файл: ${file.path}\nПодробности не записаны.' : debugText,
-              ),
-            ),
-          ),
-        );
-      }
       return;
     }
 
@@ -757,20 +771,10 @@ class _DockScreenState extends State<DockScreen>
       _activeStackIndex = null;
     });
     _playSound();
+    _clearImageCache();
+    await _warmUpIconCache();
     await PortableStorage.save(_settings, items);
     await _applyWindowProperties();
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Импортировано элементов: ${result.importedCount}'),
-          action: SnackBarAction(
-            label: 'Лог',
-            onPressed: () => _showImportDebugDialog('Отчёт импорта Settings.ini', result.debugLog),
-          ),
-        ),
-      );
-    }
   }
 
   Future<void> _applyLayering() async {
@@ -1525,9 +1529,40 @@ class _DockScreenState extends State<DockScreen>
           icon: Icons.settings_rounded,
         );
       default:
+        final hint = '${item.title} ${item.targetPath}'.toLowerCase();
+        if (hint.contains('http') || hint.contains('chrome') || hint.contains('firefox') || hint.contains('edge') || hint.contains('yandex') || hint.contains('opera') || hint.contains('brave') || hint.contains('vivaldi')) {
+          return const _MacIconStyle(
+            colors: [Color(0xFF5AC8FA), Color(0xFF0A84FF), Color(0xFF1A4FD6)],
+            icon: Icons.public_rounded,
+          );
+        }
+        if (hint.contains('cmd') || hint.contains('powershell') || hint.contains('terminal') || hint.contains('wt.exe') || hint.contains('bash')) {
+          return const _MacIconStyle(
+            colors: [Color(0xFF48484E), Color(0xFF242428), Color(0xFF121215)],
+            icon: Icons.terminal_rounded,
+          );
+        }
+        if (hint.contains('notepad') || hint.contains('word') || hint.contains('doc') || hint.contains('txt') || hint.contains('code')) {
+          return const _MacIconStyle(
+            colors: [Color(0xFFFFE042), Color(0xFFFF9F0A), Color(0xFFE07A00)],
+            icon: Icons.description_rounded,
+          );
+        }
+        if (hint.contains('zip') || hint.contains('rar') || hint.contains('7z') || hint.contains('arch')) {
+          return const _MacIconStyle(
+            colors: [Color(0xFFDA8FFF), Color(0xFFBF5AF2), Color(0xFF8944AB)],
+            icon: Icons.folder_zip_rounded,
+          );
+        }
+        if (hint.contains('vlc') || hint.contains('mp3') || hint.contains('mp4') || hint.contains('player') || hint.contains('media') || hint.contains('music') || hint.contains('video')) {
+          return const _MacIconStyle(
+            colors: [Color(0xFFFF6961), Color(0xFFFF3B30), Color(0xFFBA1A12)],
+            icon: Icons.play_circle_fill_rounded,
+          );
+        }
         return const _MacIconStyle(
-          colors: [Color(0xFF636366), Color(0xFF3A3A3C), Color(0xFF1C1C1E)],
-          icon: Icons.apps_rounded,
+          colors: [Color(0xFF5E5CE6), Color(0xFF3634A3), Color(0xFF1E1C66)],
+          icon: Icons.rocket_launch_rounded,
         );
     }
   }

@@ -327,7 +327,7 @@ class PortableStorage {
       const encoder = JsonEncoder.withIndent('  ');
       await jsonFile.writeAsString(encoder.convert({
         'portable': true,
-        'version': '2.4.8',
+        'version': '2.5.4',
         'settings': settings.toMap(),
         'items': items.map((e) => e.toJson()).toList(),
       }));
@@ -450,7 +450,10 @@ class PortableStorage {
       if (isClassicRocketDock || classicIconProps.isNotEmpty) {
         final mergedMap = baseSettings.toMap()..addAll(settingsMap);
         final parsedSettings = DockSettings.fromMap(mergedMap);
-        final importedItems = _convertClassicIcons(classicIconProps, classicCount, trace);
+        final iniDir = sourceLabel.contains(Platform.pathSeparator)
+            ? File(sourceLabel.split(' (').first).parent.path
+            : appDir;
+        final importedItems = _convertClassicIcons(classicIconProps, classicCount, trace, iniDir: iniDir);
         trace.writeln('Итог импорта (Classic INI): ${importedItems.length} элементов (Count=$classicCount).');
         return IniImportResult(
           settings: parsedSettings,
@@ -608,8 +611,9 @@ class PortableStorage {
   static List<DockItemData> _convertClassicIcons(
     Map<int, Map<String, String>> propsMap,
     int count,
-    StringBuffer trace,
-  ) {
+    StringBuffer trace, {
+    String iniDir = '',
+  }) {
     final result = <DockItemData>[];
     final maxIdx = count > 0
         ? count
@@ -673,9 +677,22 @@ class PortableStorage {
               : 'Элемент $i');
 
       String customImg = '';
-      final lowerImg = cleanIconFile.toLowerCase();
-      if (lowerImg.endsWith('.png') || lowerImg.endsWith('.jpg') || lowerImg.endsWith('.jpeg') || lowerImg.endsWith('.bmp')) {
-        customImg = cleanIconFile;
+      if (cleanIconFile.isNotEmpty) {
+        String candidate = cleanIconFile;
+        if (!candidate.contains(':') && !candidate.startsWith(r'\\') && iniDir.isNotEmpty) {
+          final relCandidate = '$iniDir${Platform.pathSeparator}$candidate';
+          if (File(relCandidate).existsSync()) {
+            candidate = relCandidate;
+          }
+        }
+        final lowerImg = candidate.toLowerCase();
+        if ((lowerImg.endsWith('.png') ||
+                lowerImg.endsWith('.jpg') ||
+                lowerImg.endsWith('.jpeg') ||
+                lowerImg.endsWith('.bmp')) &&
+            File(candidate).existsSync()) {
+          customImg = candidate;
+        }
       }
 
       result.add(DockItemData(
