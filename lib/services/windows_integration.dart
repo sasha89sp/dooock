@@ -365,6 +365,7 @@ class WindowsIntegration {
       try {
         final shell32 = DynamicLibrary.open('shell32.dll');
         _extractIconExW = shell32.lookupFunction<_ExtractIconExWNative, _ExtractIconExWDart>('ExtractIconExW');
+        _shGetFileInfoW = shell32.lookupFunction<_SHGetFileInfoWNative, _SHGetFileInfoWDart>('SHGetFileInfoW');
       } catch (_) {}
       try {
         _enumDisplayMonitors = _user32!.lookupFunction<_EnumDisplayMonitorsNative, _EnumDisplayMonitorsDart>('EnumDisplayMonitors');
@@ -728,19 +729,20 @@ class WindowsIntegration {
     int hdc = 0;
 
     try {
-      if (iconIndex == 0 && _shGetFileInfoW != null) {
-        // SHGFI_ICON (0x100) | SHGFI_LARGEICON (0x0)
-        final res = _shGetFileInfoW!(pathPtr, 0, shfi, sizeOf<_ShFileInfoW>(), 0x000000100);
-        hIcon = res != 0 ? shfi.ref.hIcon : 0;
-        dbg.writeln('SHGetFileInfoW: res=$res hIcon=$hIcon');
-      }
-      if (hIcon == 0 && _extractIconExW != null) {
+      if (_extractIconExW != null) {
         final largePtr = calloc<IntPtr>();
         final smallPtr = calloc<IntPtr>();
         try {
-          final extCount = _extractIconExW!(pathPtr, iconIndex, largePtr, smallPtr, 1);
+          var extCount = _extractIconExW!(pathPtr, iconIndex, largePtr, smallPtr, 1);
           hIcon = largePtr.value != 0 ? largePtr.value : smallPtr.value;
-          dbg.writeln('ExtractIconExW: count=$extCount large=${largePtr.value} small=${smallPtr.value} chosen=$hIcon');
+          dbg.writeln('ExtractIconExW(idx=$iconIndex): count=$extCount large=${largePtr.value} small=${smallPtr.value} chosen=$hIcon');
+          if (hIcon == 0 && iconIndex != 0) {
+            largePtr.value = 0;
+            smallPtr.value = 0;
+            extCount = _extractIconExW!(pathPtr, 0, largePtr, smallPtr, 1);
+            hIcon = largePtr.value != 0 ? largePtr.value : smallPtr.value;
+            dbg.writeln('ExtractIconExW(fallback idx=0): count=$extCount large=${largePtr.value} small=${smallPtr.value} chosen=$hIcon');
+          }
           if (largePtr.value != 0 && hIcon != largePtr.value && _destroyIcon != null) {
             _destroyIcon!(largePtr.value);
           }
@@ -751,6 +753,12 @@ class WindowsIntegration {
           calloc.free(largePtr);
           calloc.free(smallPtr);
         }
+      }
+      if (hIcon == 0 && _shGetFileInfoW != null) {
+        // SHGFI_ICON (0x100) | SHGFI_LARGEICON (0x0)
+        final res = _shGetFileInfoW!(pathPtr, 0, shfi, sizeOf<_ShFileInfoW>(), 0x000000100);
+        hIcon = res != 0 ? shfi.ref.hIcon : 0;
+        dbg.writeln('SHGetFileInfoW(fallback): res=$res hIcon=$hIcon');
       }
       if (hIcon == 0) {
         dbg.writeln('stop: hIcon == 0');

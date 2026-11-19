@@ -188,13 +188,41 @@ class _DockScreenState extends State<DockScreen>
     final buf = StringBuffer();
     buf.writeln('Режим: ${_isEffectiveEcoMode ? "Экономичный${_settings.ecoDesktopMode ? " (вручную)" : (_isFullscreenAppActive ? " (авто: полный экран)" : " (авто: батарея)")}" : "Стандартный"}');
     buf.writeln('Монитор: #${_settings.monitorIndex + 1} (всего: ${WindowsIntegration.getMonitorCount()}) | Громкость: ${_volNotifier.value}% | Hotkey: ${WindowsIntegration.isGlobalHotkeyRegistered ? "активен" : "выкл"}');
-    buf.writeln('Положение: ${_settings.layering.name} (${_settings.screenEdge.name})');
+    buf.writeln('Положение: ${_settings.layering.name} (${_settings.screenEdge.name}) | AutoHide: ${_settings.autoHide ? (_isAutoHidden ? "скрыт" : "видим") : "выкл"} | LockIcons: ${_settings.lockIcons}');
     if (mem.workingSetMb > 0) {
       buf.writeln('Память (Working Set): ${mem.workingSetMb.toStringAsFixed(1)} МБ | Private: ${mem.privateBytesMb.toStringAsFixed(1)} МБ');
     } else {
       buf.writeln('Память процесса: доступно только на Windows');
     }
-    buf.writeln('Кэш иконок в ОЗУ: ${_imageCache.length} / $_maxCachedIcons (декод ${_targetIconDecodePx}px)');
+    buf.writeln('Кэш иконок в ОЗУ: ${_imageCache.length} / $_maxCachedIcons (декод ${_targetIconDecodePx}px) | AutoExtractExe: ${_settings.autoExtractExeIcons}');
+
+    final launchable = items.where((it) => !it.isSeparator && !it.isHardwareWidget && !it.isWidgetPlugin && !it.isPowerAction).toList();
+    final withIcon = launchable.where((it) => it.customIconPath.trim().isNotEmpty).length;
+    final missingTargets = <String>[];
+    for (final it in launchable) {
+      final t = _resolveEnvPath(it.targetPath);
+      final tl = t.toLowerCase();
+      if (t.isNotEmpty &&
+          !tl.startsWith('http://') &&
+          !tl.startsWith('https://') &&
+          !tl.startsWith('shell:') &&
+          !tl.startsWith('ms-') &&
+          (t.contains(r'\') || t.contains('/')) &&
+          !File(t).existsSync() &&
+          !Directory(t).existsSync()) {
+        missingTargets.add('${it.title}: $t');
+      }
+    }
+    buf.writeln('Элементов всего: ${items.length} | Программ/ярлыков: ${launchable.length} (с иконкой: $withIcon, без иконки: ${launchable.length - withIcon})');
+    buf.writeln('Ненайденных путей на диске: ${missingTargets.length}');
+    for (final m in missingTargets.take(8)) {
+      buf.writeln('  [!] $m');
+    }
+    if (missingTargets.length > 8) {
+      buf.writeln('  ... и ещё ${missingTargets.length - 8} путей');
+    }
+    buf.writeln('Профилей в profiles/: ${_availableProfiles.length} | Файлы: ini=${PortableStorage.iniFile.existsSync()} json=${PortableStorage.jsonFile.existsSync()}');
+
     buf.writeln('Тикер анимации: ${_physicsTicker.isActive ? "АКТИВЕН" : "остановлен (0% CPU)"}');
     buf.writeln('Таймер часов: ${_clockTimer != null && _clockTimer!.isActive ? "активен (15с)" : "остановлен"}');
     buf.writeln('Таймер датчиков/окон: ${_telemetryTimer != null && _telemetryTimer!.isActive ? "активен (5с)" : "остановлен"}');
@@ -953,6 +981,7 @@ class _DockScreenState extends State<DockScreen>
     _targetPointerLocal = null;
     _clearImageCache();
     try {
+      await windowManager.setAlwaysOnTop(false);
       await windowManager.setSize(const Size(780, 620));
       await windowManager.setAlignment(Alignment.center);
       await windowManager.show();
@@ -960,6 +989,7 @@ class _DockScreenState extends State<DockScreen>
       return await showDialogFn();
     } finally {
       _isDialogOpen = false;
+      await _warmUpIconCache();
       await _applyWindowProperties();
     }
   }
@@ -1284,6 +1314,7 @@ class _DockScreenState extends State<DockScreen>
             return 'Удалено устаревших файлов кэша: ${res.removedFiles} (${res.freedKb.toStringAsFixed(1)} КБ)';
           },
           onReextractIconsManually: _reextractAllIconsManually,
+          onStartWindowDrag: () => unawaited(windowManager.startDragging()),
           onClearDebugLog: () async {
             setState(() => _lastImportDebugLog = '');
             try {

@@ -22,6 +22,7 @@ class RocketDockSettingsDialog extends StatefulWidget {
   final VoidCallback? onTrimMemoryNow;
   final Future<String> Function()? onCleanDiskIconCache;
   final Future<int> Function()? onReextractIconsManually;
+  final VoidCallback? onStartWindowDrag;
 
   const RocketDockSettingsDialog({
     super.key,
@@ -40,6 +41,7 @@ class RocketDockSettingsDialog extends StatefulWidget {
     this.onTrimMemoryNow,
     this.onCleanDiskIconCache,
     this.onReextractIconsManually,
+    this.onStartWindowDrag,
   });
 
   @override
@@ -227,7 +229,9 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
               Expanded(
                 child: Column(
                   children: [
-                    Container(
+                    GestureDetector(
+                      onPanStart: (_) => widget.onStartWindowDrag?.call(),
+                      child: Container(
                       height: 48,
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       decoration: BoxDecoration(
@@ -255,6 +259,7 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
                           ),
                         ],
                       ),
+                    ),
                     ),
                     Expanded(
                       child: SingleChildScrollView(
@@ -1223,7 +1228,7 @@ class _RocketDockSettingsDialogState extends State<RocketDockSettingsDialog> {
                     children: [
                       Text('RocketDock Portable macOS Edition', style: TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700)),
                       SizedBox(height: 3),
-                      Text('Версия 2.6.0 • Icon Extraction Diagnostics & Cache', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
+                      Text('Версия 2.6.3 • Movable Settings & Normal Z-Order', style: TextStyle(color: Color(0xFF64D2FF), fontSize: 12.5, fontWeight: FontWeight.w500)),
                       SizedBox(height: 3),
                       Text('Чёткие иконки • 2D-наведение по рядам • Импорт Settings.ini', style: TextStyle(color: Colors.white60, fontSize: 11.5)),
                     ],
